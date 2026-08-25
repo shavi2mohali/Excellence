@@ -1,0 +1,67 @@
+import type { Agency, AgencyType } from "../types";
+
+export const agencyTypeOptions: { value: AgencyType; label: string }[] = [
+  { value: "PWD", label: "Public Works Department" },
+  { value: "Punjab Mandi Board", label: "Punjab Mandi Board" },
+  { value: "Rural Development and Panchayat Department", label: "Rural Development and Panchayat Department" },
+  { value: "PSIEC", label: "PSIEC" },
+  { value: "Other", label: "Other" },
+];
+
+export const sampleAgencies: Agency[] = [
+  {
+    id: "agency_pwd_punjab",
+    name: "Public Works Department, Punjab",
+    type: "PWD",
+    agencyCategory: "executing_agency",
+    agencyType: "pwd",
+    contactPersonName: "",
+    contactPersonMobile: "",
+    contactPersonEmail: "",
+    address: "",
+    active: true,
+  },
+  {
+    id: "agency_rdp_punjab",
+    name: "Rural Development and Panchayats Department, Punjab",
+    type: "Rural Development and Panchayat Department",
+    agencyCategory: "executing_agency",
+    agencyType: "rdp",
+    active: true,
+  },
+  {
+    id: "agency_punjab_mandi_board",
+    name: "Punjab Mandi Board",
+    type: "Punjab Mandi Board",
+    agencyCategory: "executing_agency",
+    agencyType: "punjab_mandi_board",
+    contactPersonName: "",
+    contactPersonMobile: "",
+    contactPersonEmail: "",
+    address: "",
+    active: true,
+  },
+  {
+    id: "agency_psiec",
+    name: "PSIEC",
+    type: "PSIEC",
+    agencyCategory: "executing_agency",
+    agencyType: "psiec",
+    contactPersonName: "",
+    contactPersonMobile: "",
+    contactPersonEmail: "",
+    address: "",
+    active: true,
+  },
+  {
+    id: "agency_private_contractor_sample",
+    name: "Private Contractor Sample",
+    type: "Private Contractor",
+    agencyCategory: "private_contractor",
+    contactPersonName: "",
+    contactPersonMobile: "",
+    contactPersonEmail: "",
+    address: "",
+    active: true,
+  },
+];

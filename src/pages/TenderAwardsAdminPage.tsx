@@ -1,0 +1,7 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader";
+import { getAwardRecommendations } from "../services/tenderAwardService";
+import { formatIndianCurrency } from "../utils/currency";
+import type { TenderAwardRecommendation } from "../types";
+export function TenderAwardsAdminPage(){const[items,setItems]=useState<TenderAwardRecommendation[]>([]),[error,setError]=useState("");useEffect(()=>{getAwardRecommendations().then(setItems).catch(e=>setError(e instanceof Error?e.message:"Unable to load award recommendations."));},[]);return <><PageHeader eyebrow="SCERT Review" title="Tender Award Recommendations" description="Review executing-agency recommendations after approved financial evaluation."/>{error&&<div className="error-banner">{error}</div>}<section className="table-wrap"><table><thead><tr><th>Tender</th><th>DIET</th><th>Agency</th><th>Contractor</th><th>Rank</th><th>Proposed Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map(x=><tr key={x.id}><td>{x.tenderNumber}</td><td>{x.dietName}</td><td>{x.executingAgencyName}</td><td>{x.contractorName}</td><td>{x.financialRank?"L"+x.financialRank:"—"}</td><td>{formatIndianCurrency(x.proposedAwardAmount)}</td><td>{x.status.replaceAll("_"," ")}</td><td><Link to={"/tenders/"+x.tenderId+"/award-recommendation"}>View / Review</Link></td></tr>)}{!items.length&&<tr><td colSpan={8}>No award recommendations are available.</td></tr>}</tbody></table></section></>;}

@@ -1,0 +1,29 @@
+import { useEffect, useMemo, useState } from "react";
+import { PageHeader } from "../components/PageHeader";
+import { StatCard } from "../components/StatCard";
+import { getActivityMaster, getPhases } from "../lib/firestore";
+import { useAuth } from "../contexts/AuthContext";
+import { getAccessibleAssignments, getAccessibleDiets, getAccessibleScopes, getAccessibleTenders, getAccessibleWorkPackages } from "../services/accessScopeService";
+import { getAgency } from "../services/agencyService";
+import { formatIndianCurrency } from "../utils/currency";
+import { getPackageFinancialBasis } from "../utils/fundingCalculations";
+import type { ActivityMaster, Agency, Diet, DietAgencyAssignment, Phase, ScopeOfWork, Tender, WorkPackage } from "../types";
+
+export function DashboardPage() {
+  const { profile, accessScope } = useAuth();
+  const [diets,setDiets]=useState<Diet[]>([]),[phases,setPhases]=useState<Phase[]>([]),[activities,setActivities]=useState<ActivityMaster[]>([]);
+  const [assignments,setAssignments]=useState<DietAgencyAssignment[]>([]),[scopes,setScopes]=useState<ScopeOfWork[]>([]),[packages,setPackages]=useState<WorkPackage[]>([]),[tenders,setTenders]=useState<Tender[]>([]),[agencies,setAgencies]=useState<Agency[]>([]);
+  const [error,setError]=useState("");
+  useEffect(()=>{if(!accessScope)return;Promise.all([getAccessibleDiets(accessScope),getAccessibleAssignments(accessScope),getAccessibleScopes(accessScope),getAccessibleWorkPackages(accessScope),getAccessibleTenders(accessScope),getPhases(),accessScope.accessType==="global"?getActivityMaster():Promise.resolve([]),Promise.all((accessScope.agencyIds||[]).map(getAgency))]).then(([d,a,s,w,t,p,m,g])=>{setDiets(d);setAssignments(a);setScopes(s);setPackages(w);setTenders(t);setPhases(p);setActivities(m);setAgencies(g.filter((x):x is Agency=>Boolean(x)));}).catch(e=>setError(e instanceof Error?e.message:"Unable to load the assigned dashboard."));},[accessScope]);
+  const role=profile?.systemRole||profile?.role,global=accessScope?.accessType==="global",dietUser=accessScope?.accessType==="diet",agencyUser=accessScope?.accessType==="agency";
+  const noAssignment=accessScope?.accessType==="none"||(!global&&!accessScope?.dietIds?.length);
+  const phaseCounts=useMemo(()=>phases.map(phase=>({...phase,count:diets.filter(d=>d.phaseId===phase.id).length})).filter(phase=>global||phase.count),[diets,phases,global]);
+  const title=dietUser?`${diets[0]?.name||"Assigned DIET"} — Centre of Excellence`:agencyUser?`${agencies[0]?.name||profile?.organisationName||"Executing Agency"} — Centre of Excellence`:"Centre of Excellence — SCERT Punjab";
+  const description=dietUser?`District: ${diets.map(d=>d.districtName||d.district).filter(Boolean).join(", ")||"Assigned district"} • Phase: ${diets.map(d=>d.phaseName||d.phaseYear).filter(Boolean).join(", ")||"—"}`:agencyUser?`Assigned Centre of Excellence works • ${diets.length} authorised DIET${diets.length===1?"":"s"}`:"Global programme monitoring across authorised project records.";
+  if(noAssignment)return <PageHeader eyebrow="Project dashboard" title="Assignment required" description="Your account is approved, but no active project assignment is available. Please contact SCERT Punjab."/>;
+  return <><PageHeader eyebrow="Project dashboard" title={title} description={description}/>{error&&<div className="error-banner">{error}</div>}
+  {global&&<><div className="stat-grid"><StatCard label="Award Recommendations Pending Review" value={tenders.filter(t=>t.awardStatus==="recommendation_pending").length}/><StatCard label="Awards Approved" value={tenders.filter(t=>t.awardStatus==="awarded").length}/><StatCard label="Work Orders Issued" value={packages.filter(p=>p.workOrderStatus==="issued").length}/><StatCard label="Total Awarded Contract Value" value={formatIndianCurrency(packages.reduce((sum,p)=>sum+(p.finalContractValue||0),0))}/></div><section className="section-band"><div className="section-title"><h2>Phase-wise DIET count</h2><span>{diets.length} DIET records</span></div><div className="phase-grid">{phaseCounts.map(phase=><article className="phase-tile" key={phase.id}><span>{phase.name}</span><strong>{phase.count}</strong><small>DIETs</small></article>)}</div></section></>}
+  {dietUser&&<div className="stat-grid"><StatCard label="Awarded Contractors" value={new Set(packages.filter(p=>p.contractorId).map(p=>p.contractorId)).size}/><StatCard label="Contract Value" value={formatIndianCurrency(packages.reduce((sum,p)=>sum+(p.finalContractValue||0),0))}/><StatCard label="Work Orders Issued" value={packages.filter(p=>p.workOrderStatus==="issued").length}/><StatCard label="Work Orders Pending" value={packages.filter(p=>p.status==="awarded"&&!p.workOrderId).length}/></div>}
+  {agencyUser&&<div className="stat-grid"><StatCard label="Award Recommendations Pending" value={tenders.filter(t=>t.awardStatus==="recommendation_pending").length}/><StatCard label="Approved Awards" value={tenders.filter(t=>t.awardStatus==="awarded").length}/><StatCard label="Work Orders Pending" value={packages.filter(p=>p.status==="awarded"&&!p.workOrderId).length}/><StatCard label="Work Orders Issued" value={packages.filter(p=>p.workOrderStatus==="issued").length}/><StatCard label="Total Contract Value" value={formatIndianCurrency(packages.reduce((sum,p)=>sum+(p.finalContractValue||0),0))}/></div>}
+  <div className="placeholder-grid"><StatCard label="Physical progress" value={`${Math.round(diets.reduce((sum,d)=>sum+(d.physicalProgressPercent||0),0)/Math.max(diets.length,1))}%`}/><StatCard label="Financial progress" value={`${Math.round(diets.reduce((sum,d)=>sum+(d.financialProgressPercent||0),0)/Math.max(diets.length,1))}%`}/>{global&&<><StatCard label="Package financial basis" value={formatIndianCurrency(packages.reduce((sum,p)=>sum+getPackageFinancialBasis(p),0))}/><StatCard label="Signed-in role" value={String(role||"").replaceAll("_"," ")}/></>}</div></>;
+}

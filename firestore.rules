@@ -1,0 +1,541 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userProfileExists() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentUser() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+    }
+
+    function isActiveApprovedUser() {
+      return userProfileExists()
+        && currentUser().active == true
+        && currentUser().approvalStatus == 'approved';
+    }
+
+    function isScertAdmin() {
+      return isActiveApprovedUser()
+        && currentUser().systemRole == 'scert_admin';
+    }
+
+    function role() {
+      
+       return isActiveApprovedUser()
+        ? currentUser().systemRole
+        : null;
+    }
+
+    function isOwnPendingUserProfile(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.systemRole == 'pending_user'
+        && request.resource.data.role == 'pending_user'
+        && request.resource.data.approvalStatus == 'pending'
+        && request.resource.data.active == false
+        && request.resource.data.isActive == false
+        && request.resource.data.approved == false;
+    }
+
+    function isOwnPendingRegistrationRequest(requestId) {
+      return isSignedIn()
+        && request.auth.uid == requestId
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+    }
+
+    function isViewer() {
+      return role() == 'scert_viewer';
+    }
+
+    function canViewAllDiets() {
+      return role() in ['scert_admin', 'scert_viewer', 'finance_officer', 'monitoring_officer'];
+    }
+
+    function assignedToDiet(dietId) {
+      return role() == 'diet_nodal_officer'
+        && currentUser().assignmentStatus == 'assigned'
+        && (dietId == currentUser().get('primaryDietId', null)
+          || dietId in currentUser().get('assignedDietIds', []));
+    }
+
+    function assignedToAgency(agencyId) {
+      return role() == 'agency_user'
+        && currentUser().assignmentStatus == 'assigned'
+        && (agencyId == currentUser().get('primaryAgencyId', null)
+          || agencyId in currentUser().get('assignedAgencyIds', []));
+    }
+
+    function canReadExecutionRecord(data) {
+      return canViewAllDiets()
+        || assignedToDiet(data.dietId)
+        || assignedToAgency(data.executingAgencyId);
+    }
+
+    function packageIdentityUnchanged() {
+      return request.resource.data.dietId == resource.data.dietId
+        && request.resource.data.dietAgencyAssignmentId == resource.data.dietAgencyAssignmentId
+        && request.resource.data.executingAgencyId == resource.data.executingAgencyId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.packageCode == resource.data.packageCode;
+    }
+
+    function permittedDraftPackageUpdate() {
+      return resource.data.status in ['draft', 'revision_required']
+        && request.resource.data.status in ['draft', 'revision_required', 'submitted']
+        && request.resource.data.updatedBy == request.auth.uid
+        && packageIdentityUnchanged()
+        && hasValidScope(request.resource.data)
+        && packageActivitiesWithinScope(request.resource.data)
+        && request.resource.data.administrativeApprovalAmount == resource.data.administrativeApprovalAmount
+        && request.resource.data.technicalSanctionAmount == resource.data.technicalSanctionAmount;
+    }
+
+    function hasValidActiveAssignment(data) {
+      return exists(/databases/$(database)/documents/dietAgencyAssignments/$(data.dietAgencyAssignmentId))
+        && get(/databases/$(database)/documents/dietAgencyAssignments/$(data.dietAgencyAssignmentId)).data.status == 'active'
+        && get(/databases/$(database)/documents/dietAgencyAssignments/$(data.dietAgencyAssignmentId)).data.dietId == data.dietId
+        && get(/databases/$(database)/documents/dietAgencyAssignments/$(data.dietAgencyAssignmentId)).data.executingAgencyId == data.executingAgencyId;
+    }
+
+    function hasValidScope(data) {
+      return data.scopeOfWorkId is string
+        && data.scopeOfWorkId.size() > 0
+        && exists(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId))
+        && get(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId)).data.dietId == data.dietId
+        && get(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId)).data.executingAgencyId == data.executingAgencyId;
+    }
+
+    function packageActivitiesWithinScope(data) {
+      return data.activityIds.hasOnly(
+        get(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId)).data.activityIds
+      );
+    }
+
+    function scopeIdentityUnchanged() {
+      return request.resource.data.dietId == resource.data.dietId
+        && request.resource.data.dietAgencyAssignmentId == resource.data.dietAgencyAssignmentId
+        && request.resource.data.executingAgencyId == resource.data.executingAgencyId
+        && request.resource.data.preparedBy == resource.data.preparedBy;
+    }
+
+    function dietScopeUpdateAllowed() {
+      return assignedToDiet(resource.data.dietId)
+        && resource.data.status in ['draft', 'revision_required']
+        && request.resource.data.status in ['draft', 'revision_required', 'submitted']
+        && request.resource.data.updatedBy == request.auth.uid
+        && scopeIdentityUnchanged()
+        && request.resource.data.get('approvedBy', '') == resource.data.get('approvedBy', '')
+        && request.resource.data.get('approvedAt', null) == resource.data.get('approvedAt', null);
+    }
+
+    function isAssignedAgencyUser() {
+      return role() == 'agency_user'
+        && currentUser().assignmentStatus == 'assigned'
+        && (currentUser().get('assignedAgencyIds', []).size() > 0
+          || currentUser().get('primaryAgencyId', null) != null);
+    }
+
+    function agencyContractorUpdateAllowed() {
+      return isAssignedAgencyUser()
+        && (resource.data.sourceAgencyId in currentUser().get('assignedAgencyIds', [])
+          || resource.data.sourceAgencyId == currentUser().get('primaryAgencyId', null))
+        && request.resource.data.contractorCode == resource.data.contractorCode
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.sourceAgencyId == resource.data.sourceAgencyId
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.blacklisted == resource.data.blacklisted
+        && request.resource.data.blacklistReason == resource.data.blacklistReason
+        && request.resource.data.blacklistDate == resource.data.blacklistDate;
+    }
+
+    function agencyForDiet(diet) {
+      return role() == 'agency_user'
+        && diet.data.get('assignedAgencyId', '') in currentUser().get('assignedAgencyIds', []);
+    }
+
+    function onlyFinancialFieldsChanged() {
+      return request.resource.data.diff(resource.data).changedKeys()
+        .hasOnly(['fundsReleased', 'expenditure', 'financialProgressPercent', 'updatedAt']);
+    }
+
+    function onlyInspectionFieldsChanged() {
+      return request.resource.data.diff(resource.data).changedKeys()
+        .hasOnly(['inspectionRemarks', 'updatedAt']);
+    }
+
+    function tenderIdentityUnchanged() {
+      return request.resource.data.workPackageId == resource.data.workPackageId
+        && request.resource.data.dietId == resource.data.dietId
+        && request.resource.data.dietAgencyAssignmentId == resource.data.dietAgencyAssignmentId
+        && request.resource.data.executingAgencyId == resource.data.executingAgencyId
+        && request.resource.data.createdBy == resource.data.createdBy;
+    }
+
+    function agencyTenderDraftUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status in ['draft', 'revision_required']
+        && request.resource.data.status in ['draft', 'revision_required', 'submitted_for_review']
+        && request.resource.data.updatedBy == request.auth.uid
+        && tenderIdentityUnchanged()
+        && request.resource.data.get('approvedForPublicationBy', '') == resource.data.get('approvedForPublicationBy', '')
+        && request.resource.data.get('approvedForPublicationAt', '') == resource.data.get('approvedForPublicationAt', '')
+        && request.resource.data.get('reviewedBy', '') == resource.data.get('reviewedBy', '')
+        && request.resource.data.get('reviewedAt', '') == resource.data.get('reviewedAt', '')
+        && request.resource.data.get('scertReviewRemarks', '') == resource.data.get('scertReviewRemarks', '')
+        && request.resource.data.get('publishedBy', '') == resource.data.get('publishedBy', '')
+        && request.resource.data.get('cancelledBy', '') == resource.data.get('cancelledBy', '');
+    }
+
+    function agencyTenderPublicationAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'approved_for_publication'
+        && request.resource.data.status == 'published'
+        && request.resource.data.publishedBy == request.auth.uid
+        && tenderIdentityUnchanged()
+        && request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly(['status', 'publishedBy', 'publishedAt', 'updatedBy', 'updatedAt']);
+    }
+
+    function agencyPublishedPackageUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'approved_for_tender'
+        && request.resource.data.status == 'tender_in_progress'
+        && request.resource.data.updatedBy == request.auth.uid
+        && packageIdentityUnchanged()
+        && request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly(['status', 'updatedBy', 'updatedAt']);
+    }
+
+    function agencyFinancialTenderUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.get('technicalEvaluationStatus', 'not_started') == 'approved'
+        && request.resource.data.get('financialEvaluationStatus', 'not_started') in ['in_progress', 'submitted_for_review']
+        && resource.data.get('financialEvaluationStatus', 'not_started') in ['not_started', 'in_progress', 'revision_required']
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'financialEvaluationStatus', 'financialBidsOpenedBy', 'financialBidsOpenedAt',
+          'financialBidOpeningRemarks', 'financialOpeningOverrideReason', 'financialTieAcknowledged',
+          'financialEvaluationRevisionRemarks', 'updatedBy', 'updatedAt'
+        ])
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.get('financialEvaluationApprovedBy', '') == resource.data.get('financialEvaluationApprovedBy', '');
+    }
+
+    function financialBidIdentityUnchanged() {
+      return request.resource.data.tenderId == resource.data.tenderId
+        && request.resource.data.tenderBidId == resource.data.tenderBidId
+        && request.resource.data.contractorId == resource.data.contractorId
+        && request.resource.data.workPackageId == resource.data.workPackageId
+        && request.resource.data.dietId == resource.data.dietId
+        && request.resource.data.executingAgencyId == resource.data.executingAgencyId;
+    }
+
+    function awardRecommendationIdentityUnchanged() {
+      return request.resource.data.tenderId == resource.data.tenderId
+        && request.resource.data.workPackageId == resource.data.workPackageId
+        && request.resource.data.dietId == resource.data.dietId
+        && request.resource.data.executingAgencyId == resource.data.executingAgencyId
+        && request.resource.data.contractorId == resource.data.contractorId
+        && request.resource.data.recommendedTenderBidId == resource.data.recommendedTenderBidId
+        && request.resource.data.recommendedFinancialBidId == resource.data.recommendedFinancialBidId;
+    }
+
+    function workOrderIdentityUnchanged() {
+      return request.resource.data.tenderAwardId == resource.data.tenderAwardId
+        && request.resource.data.tenderId == resource.data.tenderId
+        && request.resource.data.workPackageId == resource.data.workPackageId
+        && request.resource.data.dietId == resource.data.dietId
+        && request.resource.data.executingAgencyId == resource.data.executingAgencyId
+        && request.resource.data.contractorId == resource.data.contractorId
+        && request.resource.data.contractValue == resource.data.contractValue;
+    }
+
+    function agencyAwardWorkOrderStatusUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status in ['approved', 'award_letter_issued', 'work_order_pending']
+        && request.resource.data.status in ['work_order_pending', 'work_order_issued']
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'updatedBy', 'updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function agencyPackageWorkOrderLinkAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'awarded'
+        && request.resource.data.status == 'awarded'
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['workOrderId', 'workOrderNumber', 'workOrderStatus', 'updatedBy', 'updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function agencyAwardTenderUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.get('financialEvaluationStatus', 'not_started') == 'approved'
+        && request.resource.data.get('awardStatus', 'not_started') == 'recommendation_pending'
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['awardStatus', 'updatedBy', 'updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == userId || isScertAdmin());
+      allow create: if isScertAdmin() || isOwnPendingUserProfile(userId);
+      allow update: if isScertAdmin();
+      allow delete: if false;
+    }
+
+    match /registrationRequests/{requestId} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == requestId || isScertAdmin());
+      allow create: if isOwnPendingRegistrationRequest(requestId);
+      allow update: if isScertAdmin();
+      allow delete: if false;
+    }
+
+    match /phases/{phaseId} {
+      allow read: if isSignedIn() || isScertAdmin();
+      allow write: if isScertAdmin();
+    }
+
+    match /activityMaster/{activityId} {
+       allow read: if isSignedIn() || isScertAdmin();
+      allow write: if isScertAdmin();
+    }
+
+    match /agencies/{agencyId} {
+      allow read: if canViewAllDiets() || assignedToAgency(agencyId);
+      allow create, update: if isScertAdmin();
+      allow delete: if false;
+    }
+
+    match /userAssignments/{assignmentId} {
+      allow read: if isScertAdmin()
+        || (isActiveApprovedUser() && resource.data.userId == request.auth.uid);
+      allow create, update: if isScertAdmin();
+      allow delete: if false;
+    }
+
+    match /auditLogs/{auditId} {
+      allow read: if isScertAdmin();
+      allow create: if isScertAdmin()
+        || (isActiveApprovedUser()
+          && request.resource.data.performedBy == request.auth.uid
+          && ((request.resource.data.entityType == 'workPackage'
+              && request.resource.data.action in ['work_package_created', 'work_package_updated', 'submitted_for_review', 'work_package_submitted']
+              && existsAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
+            || (request.resource.data.entityType == 'contractor'
+              && request.resource.data.action in ['contractor_created', 'contractor_updated']
+              && existsAfter(/databases/$(database)/documents/contractors/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/contractors/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
+            || (request.resource.data.entityType == 'scopeOfWork'
+              && request.resource.data.action in ['scope_created', 'scope_updated', 'scope_submitted']
+              && existsAfter(/databases/$(database)/documents/scopeOfWorks/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/scopeOfWorks/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
+            || (request.resource.data.entityType == 'tender'
+              && request.resource.data.action in ['tender_created', 'tender_updated', 'tender_submitted', 'tender_published']
+              && existsAfter(/databases/$(database)/documents/tenders/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/tenders/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
+            || (request.resource.data.entityType == 'workPackage'
+              && request.resource.data.action == 'tender_published'
+              && existsAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
+            || (request.resource.data.entityType == 'financial_evaluation'
+              && request.resource.data.action in ['financial_bids_opened', 'early_financial_opening_override', 'financial_bid_amount_entered', 'financial_amount_corrected', 'financial_ranking_recalculated', 'financial_evaluation_submitted'])
+            || (request.resource.data.entityType == 'tender_award_recommendation'
+              && request.resource.data.action in ['award_recommendation_created', 'award_recommendation_updated', 'award_recommendation_submitted'])
+            || (request.resource.data.entityType == 'work_order'
+              && request.resource.data.action in ['work_order_created', 'work_order_updated', 'work_order_issued'])));
+      allow update, delete: if false;
+    }
+
+    match /dietAgencyAssignments/{assignmentId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create, update: if isScertAdmin();
+      allow delete: if false;
+    }
+
+    match /scopeOfWorks/{scopeId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToDiet(request.resource.data.dietId)
+          && request.resource.data.status == 'draft'
+          && request.resource.data.preparedBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.scopeCategories.size() > 0
+          && request.resource.data.activityIds.size() > 0
+          && exists(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId))
+          && get(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId)).data.status == 'active');
+      allow update: if isScertAdmin() || dietScopeUpdateAllowed();
+      allow delete: if false;
+    }
+
+    match /workPackages/{packageId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (isActiveApprovedUser()
+          && request.resource.data.status == 'draft'
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.administrativeApprovalAmount == 0
+          && request.resource.data.technicalSanctionAmount == 0
+          && hasValidActiveAssignment(request.resource.data)
+          && hasValidScope(request.resource.data)
+          && packageActivitiesWithinScope(request.resource.data)
+          && (assignedToDiet(request.resource.data.dietId)
+            || assignedToAgency(request.resource.data.executingAgencyId)));
+      allow update: if isScertAdmin()
+        || ((assignedToDiet(resource.data.dietId)
+            || assignedToAgency(resource.data.executingAgencyId))
+          && permittedDraftPackageUpdate())
+        || agencyPublishedPackageUpdateAllowed()
+        || agencyPackageWorkOrderLinkAllowed();
+      allow delete: if false;
+    }
+
+    match /tenders/{tenderId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.status == 'draft'
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && exists(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId))
+          && get(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId)).data.status == 'approved_for_tender'
+          && get(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId)).data.dietId == request.resource.data.dietId
+          && get(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId)).data.executingAgencyId == request.resource.data.executingAgencyId
+          && hasValidActiveAssignment(request.resource.data));
+      allow update: if isScertAdmin() || agencyTenderDraftUpdateAllowed() || agencyTenderPublicationAllowed() || agencyFinancialTenderUpdateAllowed() || agencyAwardTenderUpdateAllowed();
+      allow delete: if false;
+    }
+
+    match /tenderBids/{bidId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow write: if false;
+    }
+
+    match /tenderFinancialBids/{financialBidId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.enteredBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.quotedAmount >= 0
+          && request.resource.data.finalEvaluatedAmount == request.resource.data.quotedAmount
+          && request.resource.data.isSelectedForRecommendation == false
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.executingAgencyId == request.resource.data.executingAgencyId
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.get('technicalEvaluationStatus', 'not_started') == 'approved'
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.get('financialEvaluationStatus', 'not_started') in ['in_progress', 'revision_required']
+          && exists(/databases/$(database)/documents/tenderBids/$(request.resource.data.tenderBidId))
+          && get(/databases/$(database)/documents/tenderBids/$(request.resource.data.tenderBidId)).data.qualified == true);
+      allow update: if isScertAdmin()
+        || (assignedToAgency(resource.data.executingAgencyId)
+          && financialBidIdentityUnchanged()
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.quotedAmount >= 0
+          && request.resource.data.finalEvaluatedAmount == request.resource.data.quotedAmount
+          && request.resource.data.isSelectedForRecommendation == false
+          && get(/databases/$(database)/documents/tenders/$(resource.data.tenderId)).data.get('financialEvaluationStatus', 'not_started') in ['in_progress', 'revision_required']);
+      allow delete: if false;
+    }
+
+    match /tenderAwardRecommendations/{recommendationId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.status == 'draft'
+          && request.resource.data.recommendedBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.proposedAwardAmount >= 0
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.get('financialEvaluationStatus', 'not_started') == 'approved'
+          && exists(/databases/$(database)/documents/tenderFinancialBids/$(request.resource.data.recommendedFinancialBidId))
+          && get(/databases/$(database)/documents/tenderFinancialBids/$(request.resource.data.recommendedFinancialBidId)).data.contractorId == request.resource.data.contractorId);
+      allow update: if isScertAdmin()
+        || (assignedToAgency(resource.data.executingAgencyId)
+          && awardRecommendationIdentityUnchanged()
+          && resource.data.status in ['draft', 'revision_required']
+          && request.resource.data.status in ['draft', 'revision_required', 'submitted_to_scert']
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.get('reviewedBy', '') == resource.data.get('reviewedBy', ''));
+      allow delete: if false;
+    }
+
+    match /tenderAwards/{awardId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin();
+      allow update: if isScertAdmin() || agencyAwardWorkOrderStatusUpdateAllowed();
+      allow delete: if false;
+    }
+
+    match /workOrders/{workOrderId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.status == 'draft'
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && exists(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId))
+          && get(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId)).data.status in ['approved', 'award_letter_issued', 'work_order_pending']
+          && get(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId)).data.finalContractValue == request.resource.data.contractValue);
+      allow update: if isScertAdmin()
+        || (assignedToAgency(resource.data.executingAgencyId)
+          && workOrderIdentityUnchanged()
+          && resource.data.status == 'draft'
+          && request.resource.data.status in ['draft', 'issued']
+          && request.resource.data.updatedBy == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /packageCounters/{dietId} {
+      allow read: if isScertAdmin() || assignedToDiet(dietId) || role() == 'agency_user';
+      allow create, update: if isScertAdmin() || assignedToDiet(dietId)
+        || (role() == 'agency_user' && request.resource.data.nextNumber is int);
+      allow delete: if false;
+    }
+
+    match /contractors/{contractorId} {
+      allow read: if isActiveApprovedUser();
+      allow create: if isScertAdmin()
+        || (isAssignedAgencyUser()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.blacklisted == false
+            && (request.resource.data.sourceAgencyId in currentUser().get('assignedAgencyIds', [])
+              || request.resource.data.sourceAgencyId == currentUser().get('primaryAgencyId', null)));
+      allow update: if isScertAdmin() || agencyContractorUpdateAllowed();
+      allow delete: if false;
+    }
+
+    match /systemCounters/contractors {
+      allow read, create, update: if isScertAdmin() || isAssignedAgencyUser();
+      allow delete: if false;
+    }
+
+    match /diets/{dietId} {
+      allow read: if isScertAdmin()
+        || canViewAllDiets()
+        || assignedToDiet(dietId)
+        || agencyForDiet(resource);
+      allow create, delete: if isScertAdmin();
+      allow update: if isScertAdmin()
+        || assignedToDiet(dietId)
+        || agencyForDiet(resource)
+        || (role() == 'finance_officer' && onlyFinancialFieldsChanged())
+        || (role() == 'monitoring_officer' && onlyInspectionFieldsChanged());
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
