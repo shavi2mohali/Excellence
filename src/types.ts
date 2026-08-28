@@ -4,12 +4,13 @@ export type UserRole =
   | "scert_viewer"
   | "diet_nodal_officer"
   | "agency_user"
+  | "architecture_user"
   | "finance_officer"
   | "monitoring_officer";
 
 export type SystemRole = UserRole;
 
-export type OrganisationRole = "diet" | "pwd" | "rdp";
+export type OrganisationRole = "diet" | "pwd" | "rdp" | "architecture_department";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "suspended";
 export type AssignmentStatus = "unassigned" | "assigned" | "inactive";
@@ -59,7 +60,7 @@ export type AppUser = {
 export type UserProfile = AppUser;
 
 export type AccessScope = {
-  accessType: "global" | "diet" | "agency" | "none";
+  accessType: "global" | "diet" | "agency" | "architecture" | "none";
   dietIds: string[] | null;
   agencyIds: string[] | null;
   districtIds: string[] | null;
@@ -158,6 +159,20 @@ export type ActivityMaster = {
   workCategories?: WorkCategory[];
 };
 
+export type AllocationStatus = "unallocated" | "partially_allocated" | "fully_allocated" | "over_allocated";
+export type ActivityLinkStatus = "matched" | "unmatched";
+export interface DietActivityFinancial {
+  id:string; dietId:string; dietName:string; phaseId:string; phaseName:string; financialYear:string;
+  activityId?:string; activityCode?:string; activityName:string; activityLinkStatus:ActivityLinkStatus;
+  approvedPhysical?:number|string; approvedUnitCost?:number; originalApprovedAmount:number;
+  principalAllocation:number; agencyAllocation:number; totalAllocatedAmount:number; unallocatedApprovedAmount:number;
+  currentEffectiveApprovedAmount:number; allocationStatus:AllocationStatus; approvalRemarks?:string;
+  sourceType:"excel_import"|"manual"; sourceReference?:string; approvalVersion:string;
+  legacyReleasedToAgency?:number; legacyReleasedToPrincipal?:number; legacyTotalReleased?:number; legacyInstallmentText?:string;
+  executingAgencyIds:string[]; active:boolean; createdBy:string; createdAt?:unknown; updatedBy:string; updatedAt?:unknown;
+  committedToWorkPackages?:number; availableForNewWorkPackages?:number;
+}
+
 export type ScopeCategory =
   | "civil_work" | "electrical_work" | "water_supply" | "sanitation" | "furniture"
   | "ict" | "laboratory_equipment" | "library_resources" | "procurement"
@@ -197,13 +212,26 @@ export type WorkCategory =
   | "laboratory" | "library" | "campus_development" | "mixed" | "other";
 
 export type WorkPackageStatus =
-  | "draft" | "submitted" | "under_review" | "revision_required" | "approved_for_tender" | "tender_in_progress"
+  | "draft" | "sent_to_diet" | "diet_review" | "diet_revision_requested" | "agency_revision" | "diet_concurred" | "ready_for_scert"
+  | "submitted_to_scert" | "scert_under_review" | "scert_revision_required"
+  | "submitted" | "under_review" | "revision_required" | "approved_for_tender" | "tender_in_progress"
   | "awarded" | "work_in_progress" | "completed" | "cancelled";
 
 export type FundingShare = {
   totalAmount: number;
   centralShare: number;
   stateShare: number;
+};
+
+export type WorkPackageActivityAllocation = {
+  activityId: string;
+  activityCode?: string;
+  activityName?: string;
+  financialRecordId: string;
+  currentEffectiveApprovedAmount: number;
+  principalAllocation: number;
+  agencyAllocation: number;
+  packageAllocatedAmount: number;
 };
 
 export type WorkPackage = {
@@ -225,6 +253,20 @@ export type WorkPackage = {
   executingAgencyType: string;
   workCategory: WorkCategory;
   activityIds: string[];
+  activityAllocations?: WorkPackageActivityAllocation[];
+  financialBreakdownStatus?: "complete" | "required";
+  packageRevision?: number;
+  handshake?: {
+    dietConcurrenceStatus: "pending" | "concurred" | "revision_requested";
+    dietConcurredBy?: string; dietConcurredAt?: unknown; dietConcurredRevision?: number;
+    agencyFinalisationStatus: "pending" | "finalised";
+    agencyFinalisedBy?: string; agencyFinalisedAt?: unknown; agencyFinalisedRevision?: number;
+    completed: boolean; completedAt?: unknown; version: number;
+  };
+  sentToDietBy?: string; sentToDietAt?: unknown; submittedToScertBy?: string; submittedToScertAt?: unknown;
+  dietReviewStatus?: "pending" | "revision_requested" | "concurred"; dietReviewedBy?: string; dietReviewedAt?: unknown; dietReviewComments?: string;
+  scertRevisionComments?: string; scertReviewedBy?: string; scertReviewedAt?: unknown;
+  reviewHistory?: WorkflowReviewEntry[]; legacyWorkflow?: boolean;
   estimatedCost: number;
   administrativeApprovalAmount: number;
   technicalSanctionAmount: number;
@@ -316,15 +358,53 @@ export interface Tender {
   cancelledBy?: string;
   cancelledAt?: unknown;
   cancellationReason?: string;
+  cancellationDate?: unknown;
+  cancellationReference?: string;
+  cancellationRemarks?: string;
+  retenderOfTenderId?: string;
+  retenderSequence?: number;
+  replacedByTenderId?: string;
+  retenderReason?: string;
   technicalEvaluationStatus?: "not_started" | "in_progress" | "submitted_for_review" | "revision_required" | "approved";
+  technicalBidsOpenedBy?: string;
+  technicalBidsOpenedAt?: { toDate(): Date };
+  technicalBidOpeningRecorded?: boolean;
+  technicalBidOpeningActualAt?: unknown;
+  technicalBidOpeningRecordedBy?: string;
+  technicalBidOpeningRecordedAt?: unknown;
+  technicalBidOpeningSource?: "eproc_punjab" | "other";
+  technicalBidOpeningBidCount?: number;
+  technicalBidOpeningReceivedCount?: number;
+  eProcTechnicalOpeningReference?: string;
+  technicalBidOpeningRemarks?: string;
+  technicalOpeningOverrideReason?: string;
+  technicalEvaluationSource?: "eproc_punjab" | "manual_record" | "legacy";
+  technicalEvaluationReference?: string;
+  technicalEvaluationActualDate?: unknown;
+  technicalEvaluationRecordedBy?: string;
+  technicalEvaluationRecordedAt?: unknown;
+  noBidsReceived?: boolean;
+  noBidRemarks?: string;
   financialEvaluationStatus?: FinancialEvaluationStatus;
   financialBidsOpenedBy?: string;
-  financialBidsOpenedAt?: unknown;
+  financialBidsOpenedAt?: { toDate(): Date };
+  financialBidOpeningRecorded?: boolean;
+  financialBidOpeningActualAt?: unknown;
+  financialBidOpeningRecordedBy?: string;
+  financialBidOpeningRecordedAt?: unknown;
+  financialBidOpeningSource?: "eproc_punjab" | "other";
+  financialBidOpeningBidCount?: number;
+  eProcFinancialOpeningReference?: string;
   financialBidOpeningRemarks?: string;
   financialEvaluationApprovedBy?: string;
   financialEvaluationApprovedAt?: unknown;
   financialEvaluationRevisionRemarks?: string;
   financialTieAcknowledged?: boolean;
+  financialEvaluationSource?: "eproc_punjab" | "manual_record" | "legacy";
+  financialEvaluationReference?: string;
+  financialEvaluationActualDate?: unknown;
+  financialEvaluationRecordedBy?: string;
+  financialEvaluationRecordedAt?: unknown;
   awardStatus?: "not_started" | "recommendation_pending" | "recommendation_approved" | "awarded" | "cancelled";
   selectedContractorId?: string;
   selectedContractorName?: string;
@@ -337,16 +417,46 @@ export type FinancialEvaluationStatus = "not_started" | "in_progress" | "submitt
 export interface TenderBid {
   id: string;
   tenderId: string;
+  tenderNumber?: string;
+  workPackageId?: string;
+  dietId?: string;
+  dietName?: string;
+  executingAgencyId?: string;
+  executingAgencyName?: string;
   contractorId: string;
   contractorCode: string;
   contractorName: string;
+  contractorDistrict?: string;
+  eProcBidReference?: string;
+  bidSubmissionDate?: unknown;
+  bidSource?: "eproc_punjab" | "other" | "legacy";
+  bidReceived?: boolean;
+  emdStatus?: "not_checked" | "submitted" | "exempted" | "deficient" | "not_submitted";
+  emdSubmittedAmount?: number;
+  emdReference?: string;
+  emdExemptionReason?: string;
+  tenderFeeStatus?: "not_checked" | "submitted" | "exempted" | "deficient" | "not_submitted";
+  tenderFeeSubmittedAmount?: number;
+  tenderFeeReference?: string;
+  tenderFeeExemptionReason?: string;
   qualified?: boolean;
   withdrawn?: boolean;
+  withdrawalReason?: string;
+  withdrawnAt?: unknown;
+  withdrawnBy?: string;
   status?: string;
+  technicalBidStatus?: string;
   technicalEvaluationStatus?: string;
   technicalRemarks?: string;
   disqualificationReason?: string;
+  recordedBy?: string;
+  recordedAt?: unknown;
+  updatedBy?: string;
+  updatedAt?: unknown;
 }
+
+export interface TenderTechnicalCriterion {id:string;tenderId:string;dietId?:string;executingAgencyId?:string;label:string;description?:string;mandatory:boolean;active:boolean;createdBy:string;createdAt?:unknown;updatedBy:string;updatedAt?:unknown;}
+export type TechnicalCriterionResult="pending"|"compliant"|"non_compliant"|"not_applicable";
 
 export interface TenderFinancialBid {
   id: string; tenderId: string; tenderNumber: string; tenderBidId: string; contractorId: string; contractorCode: string; contractorName: string;
@@ -364,14 +474,17 @@ export interface TenderAwardRecommendation {
   tenderEstimatedValue:number; quotedAmount:number; evaluatedAmount:number; proposedAwardAmount:number; recommendationReason:string; nonL1Justification?:string; jointL1Justification?:string;
   status:AwardRecommendationStatus; recommendedBy:string; recommendedAt?:unknown; updatedBy:string; updatedAt?:unknown; reviewedBy?:string; reviewedAt?:unknown; scertRemarks?:string;
 }
-export type TenderAwardStatus = "draft" | "approved" | "award_letter_issued" | "work_order_pending" | "work_order_issued" | "cancelled";
+export type TenderAwardStatus = "draft" | "approved" | "awarded" | "award_letter_issued" | "work_order_pending" | "work_order_issued" | "cancelled";
 export interface TenderAward {
   id:string; tenderId:string; tenderNumber:string; workPackageId:string; workPackageCode:string; workPackageTitle:string; dietId:string; dietName:string; executingAgencyId:string; executingAgencyName:string;
   contractorId:string; contractorCode:string; contractorName:string; selectedTenderBidId:string; selectedFinancialBidId:string; recommendationId:string; financialRank:number|null; isL1:boolean;
   tenderEstimatedValue:number; quotedAmount:number; evaluatedAmount:number; acceptedTenderAmount:number; negotiationAmount?:number; finalContractValue:number;
   amountDifferenceFromTenderEstimate:number; percentDifferenceFromTenderEstimate:number; tenderSavingAmount:number; tenderSavingPercent:number; excessOverTenderEstimateAmount:number; excessOverTenderEstimatePercent:number;
-  contractCentralShare:number; contractStateShare:number; awardNumber:string; awardDate:unknown; status:TenderAwardStatus; approvedBy:string; approvedAt?:unknown; createdBy:string; createdAt?:unknown; updatedBy:string; updatedAt?:unknown; remarks?:string;
+  contractCentralShare:number; contractStateShare:number; awardNumber:string; awardDate:unknown; status:TenderAwardStatus; awardedBy?:string; awardedAt?:unknown; approvedBy?:string; approvedAt?:unknown; createdBy:string; createdAt?:unknown; updatedBy:string; updatedAt?:unknown; remarks?:string;
+  aocRecorded?: boolean; aocNumber?: string; aocDate?: unknown; aocReference?: string; aocUrl?: string; aocSource?: "eproc_punjab" | "other"; aocRecordedBy?: string; aocRecordedAt?: unknown;
 }
+export type CorrigendumType = "date_extension" | "technical_change" | "financial_change" | "scope_change" | "document_change" | "cancellation_notice" | "other";
+export interface TenderCorrigendum {id:string;tenderId:string;tenderNumber:string;dietId:string;executingAgencyId:string;corrigendumNumber?:string;corrigendumTitle:string;corrigendumType:CorrigendumType;issueDate:unknown;effectiveDate?:unknown;description:string;previousBidSubmissionEndDate?:unknown;revisedBidSubmissionEndDate?:unknown;previousTechnicalOpeningDate?:unknown;revisedTechnicalOpeningDate?:unknown;previousFinancialOpeningDate?:unknown;revisedFinancialOpeningDate?:unknown;previousTenderValue?:number;revisedTenderValue?:number;eProcReference?:string;eProcUrl?:string;recordedBy:string;recordedAt?:unknown;remarks?:string;}
 export type WorkOrderStatus = "draft" | "issued" | "acknowledged" | "work_not_started" | "work_started" | "completed" | "terminated" | "cancelled";
 export interface WorkOrder {
   id:string; workOrderNumber:string; workOrderDate:unknown; tenderAwardId:string; tenderId:string; workPackageId:string; dietId:string; dietName:string; executingAgencyId:string; executingAgencyName:string;
@@ -380,13 +493,25 @@ export interface WorkOrder {
   issuedBy:string; issuedAt?:unknown; createdBy:string; createdAt?:unknown; updatedBy:string; updatedAt?:unknown; remarks?:string;
 }
 
-export type ScopeOfWorkStatus = "draft" | "submitted" | "under_review" | "approved" | "revision_required" | "cancelled";
+export type WorkflowReviewEntry={comment:string;commentBy:string;role:string;timestamp:unknown;revision:number;action:string};
+export type ScopeOfWorkStatus = "draft"|"sent_to_architecture"|"architecture_review"|"architecture_revision_requested"|"architectural_drawings_issued"|"diet_drawing_review"|"drawing_revision_requested"|"diet_drawing_accepted"|"submitted_to_scert_for_drawing_approval"|"scert_drawing_review"|"scert_drawing_revision_required"|"architectural_drawings_approved"|"released_to_executing_agency"|"sent_to_agency"|"agency_review"|"revision_requested"|"agency_accepted"|"mutually_agreed"|"submitted"|"under_review"|"approved"|"revision_required"|"cancelled";
+export type DrawingRequirement="architectural_required"|"architectural_and_structural_required"|"standard_existing_drawing"|"not_required";
+export type DrawingDiscipline="architectural"|"structural"|"electrical"|"public_health"|"fire_safety"|"other";
+export type DrawingPackageStatus="draft"|"issued"|"superseded"|"diet_accepted"|"scert_approved"|"revision_required";
+export interface DocumentAttachment{id:string;originalFileName:string;mimeType:"application/pdf";size:number;storageKey:string;uploadedBy:string;uploadedAt?:unknown;entityType:string;entityId:string;communicationId?:string;documentType:string;revision?:string;downloadUrl?:string;}
+export interface DrawingPackage{id:string;scopeOfWorkId:string;dietId:string;phaseId:string;executingAgencyId?:string;drawingDiscipline:DrawingDiscipline;drawingRevision:string;drawingNumber:string;drawingTitle:string;preparedByOrganisation:string;preparedByUser:string;issuedBy:string;issuedAt?:unknown;status:DrawingPackageStatus;attachmentIds:string[];remarks:string;createdAt?:unknown;updatedAt?:unknown;}
+export interface OfficialCommunication{id:string;entityType:"scope_of_work"|"drawing_package"|"work_package"|"tender"|"other";entityId:string;fromUserId:string;fromUserName:string;fromRole:SystemRole;fromOrganisation:string;toUserId?:string;toRole:SystemRole;toOrganisation?:string;communicationType:string;subject:string;message:string;attachmentIds:string[];relatedRevision?:string;createdAt?:unknown;}
 export type ScopeOfWork = {
   id: string; dietId: string; dietName: string; phaseId: string; phaseName: string;
   dietAgencyAssignmentId: string; executingAgencyId: string; executingAgencyName: string;
   scopeTitle: string; scopeDescription: string; scopeCategories: ScopeCategory[]; activityIds: string[];
+  functionalRequirement?:string;siteConditionNotes?:string;drawingRequirement?:DrawingRequirement;scopeRevision?:number;
+  currentDrawingRevision?:string;dietAcceptedDrawingRevision?:string;scertApprovedDrawingRevision?:string;
+  sentToArchitectureBy?:string;sentToArchitectureAt?:unknown;dietDrawingAcceptedBy?:string;dietDrawingAcceptedAt?:unknown;scertDrawingApprovedBy?:string;scertDrawingApprovedAt?:unknown;releasedToAgencyBy?:string;releasedToAgencyAt?:unknown;
   status: ScopeOfWorkStatus; preparedBy: string; preparedAt?: unknown; updatedBy: string; updatedAt?: unknown;
   reviewedBy?: string; reviewedAt?: unknown; approvedBy?: string; approvedAt?: unknown; remarks: string;
+  sentToAgencyBy?:string;sentToAgencyAt?:unknown;agencyReviewStatus?:"pending"|"accepted"|"revision_requested";agencyReviewedBy?:string;agencyReviewedAt?:unknown;agencyComments?:string;
+  agencyAcceptedBy?:string;agencyAcceptedAt?:unknown;dietAgreedBy?:string;dietAgreedAt?:unknown;mutualAgreementCompletedAt?:unknown;reviewHistory?:WorkflowReviewEntry[];legacyWorkflow?:boolean;
 };
 
 export type AgencyType =

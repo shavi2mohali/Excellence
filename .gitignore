@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-ssr/
+functions/lib/
 .env
 .env.local
 .env.*.local
@@ -14,6 +15,7 @@ firebase-service-account*.json
 firebase-admin*.json
 *.service-account.json
 *service*account*.json
+excellencedatabase-e0eb0a14150c.json
 .env.admin
 .env.demo-admin
 .dev.vars

@@ -1,38 +1,41 @@
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, Timestamp, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import type { AppUser, Tender, TenderBid, TenderFinancialBid } from "../types";
 import { calculateAboveBelowEstimate, rankFinancialBids } from "../utils/financialEvaluation";
+import { getTenderBidsForTender } from "./tenderBidService";
 
 function context(){if(!db||!auth?.currentUser)throw new Error("Firebase is not configured or the user is not signed in.");return{firestore:db,uid:auth.currentUser.uid};}
 async function profile(){const{firestore,uid}=context();const snap=await getDoc(doc(firestore,"users",uid));if(!snap.exists())throw new Error("User profile not found.");return{uid,...snap.data()} as AppUser;}
 const role=(p:AppUser)=>p.systemRole||p.role;
 const assignedAgency=(p:AppUser,id:string)=>role(p)==="scert_admin"||(p.assignedAgencyIds?.includes(id)??false)||p.primaryAgencyId===id;
 const mapFinancial=(snap:{id:string;data():unknown})=>({id:snap.id,...(snap.data() as Record<string,unknown>)} as TenderFinancialBid);
-const mapBid=(snap:{id:string;data():unknown})=>({id:snap.id,...(snap.data() as Record<string,unknown>)} as TenderBid);
 function isWithdrawn(b:TenderBid){return b.withdrawn===true||["withdrawn","withdrawn_before_financial_opening"].includes(b.status||"");}
 export function isTechnicallyQualifiedBid(b:TenderBid){return b.qualified===true&&!isWithdrawn(b);}
 async function tenderById(id:string){const{firestore}=context();const snap=await getDoc(doc(firestore,"tenders",id));return snap.exists()?({id:snap.id,...snap.data()} as Tender):null;}
 function audit(batch:ReturnType<typeof writeBatch>,id:string,action:string,uid:string,previous:unknown,next:unknown,remarks=""){const{firestore}=context();batch.set(doc(collection(firestore,"auditLogs")),{entityType:"financial_evaluation",entityId:id,action,performedBy:uid,performedAt:serverTimestamp(),previousData:previous,newData:next,remarks});}
 function openingDate(value:unknown){if(!value)return null;if(typeof value==="object"&&value&&"toDate" in value)return (value as{toDate():Date}).toDate();const d=new Date(String(value));return Number.isNaN(d.getTime())?null:d;}
 
-export async function getTenderBidsForFinancialEvaluation(tenderId:string){const{firestore}=context();return(await getDocs(query(collection(firestore,"tenderBids"),where("tenderId","==",tenderId)))).docs.map(mapBid);}
+export const getTenderBidsForFinancialEvaluation=(tenderId:string)=>getTenderBidsForTender(tenderId);
 export async function getFinancialBidsForTender(tenderId:string){const{firestore}=context();return(await getDocs(query(collection(firestore,"tenderFinancialBids"),where("tenderId","==",tenderId)))).docs.map(mapFinancial);}
 export async function getFinancialEvaluation(tenderId:string){const tender=await tenderById(tenderId);if(!tender)throw new Error("Tender not found.");const[bids,financialBids]=await Promise.all([getTenderBidsForFinancialEvaluation(tenderId),getFinancialBidsForTender(tenderId)]);return{tender,bids,qualifiedBids:bids.filter(isTechnicallyQualifiedBid),ineligibleBids:bids.filter(b=>!isTechnicallyQualifiedBid(b)),financialBids:rankFinancialBids(financialBids)};}
 
-export async function openFinancialBids(tenderId:string,remarks:string,overrideReason=""){
+export type FinancialOpeningInput={confirmed:boolean;actualOpeningAt:string;bidsOpened:number;eProcReference?:string;remarks?:string;overrideReason?:string;};
+export async function recordFinancialBidOpening(tenderId:string,input:FinancialOpeningInput){
+ if(!input.confirmed)throw new Error("Confirm that financial bids were opened on eProc Punjab.");if(!input.actualOpeningAt)throw new Error("Actual financial bid opening date and time are required.");if(!Number.isInteger(input.bidsOpened)||input.bidsOpened<0)throw new Error("Financial bids opened must be a whole number of zero or greater.");const actual=new Date(input.actualOpeningAt);if(Number.isNaN(actual.getTime()))throw new Error("Enter a valid actual financial opening date and time.");
  const{firestore,uid}=context(),user=await profile(),tender=await tenderById(tenderId);if(!tender)throw new Error("Tender not found.");
- if(!assignedAgency(user,tender.executingAgencyId))throw new Error("You are not authorised to open financial bids for this tender.");
- if(tender.technicalEvaluationStatus!=="approved")throw new Error("Technical evaluation must be approved before financial bids can be opened.");
- const bids=await getTenderBidsForFinancialEvaluation(tenderId);if(!bids.some(isTechnicallyQualifiedBid))throw new Error("No technically qualified bidders are available for financial evaluation.");
- const scheduled=openingDate(tender.financialBidOpeningDate);if((!scheduled||scheduled.getTime()>Date.now())&&!overrideReason.trim())throw new Error("A reason is required because the scheduled financial opening date is missing or has not arrived.");
- const next={financialEvaluationStatus:"in_progress",financialBidsOpenedBy:uid,financialBidsOpenedAt:serverTimestamp(),financialBidOpeningRemarks:remarks.trim(),financialOpeningOverrideReason:overrideReason.trim(),updatedBy:uid,updatedAt:serverTimestamp()};
- const batch=writeBatch(firestore);batch.update(doc(firestore,"tenders",tenderId),next);audit(batch,tenderId,overrideReason?"early_financial_opening_override":"financial_bids_opened",uid,{financialEvaluationStatus:tender.financialEvaluationStatus||"not_started"},next,overrideReason||remarks);await batch.commit();
+ if(!assignedAgency(user,tender.executingAgencyId))throw new Error("You are not authorised to record financial opening for this tender.");if(tender.status==="cancelled")throw new Error("Financial opening cannot be recorded for a cancelled tender.");
+ if(tender.technicalEvaluationStatus!=="approved")throw new Error("Technical evaluation must be approved before financial opening can be recorded.");
+ const bids=await getTenderBidsForFinancialEvaluation(tenderId),qualified=bids.filter(isTechnicallyQualifiedBid);if(!qualified.length)throw new Error("No technically qualified bidders are available for financial evaluation.");if(input.bidsOpened>qualified.length)throw new Error("Financial bids opened cannot exceed technically qualified, non-withdrawn bidders.");if(input.bidsOpened!==qualified.length&&!input.remarks?.trim())throw new Error("Remarks are required when the financial opening count differs from the eligible bidder count.");
+ const scheduled=openingDate(tender.financialBidOpeningDate);if((!scheduled||actual<scheduled)&&!input.overrideReason?.trim())throw new Error("A reason is required because the recorded opening is early or the scheduled date is missing.");
+ const next={financialEvaluationStatus:"in_progress",financialBidOpeningRecorded:true,financialBidOpeningActualAt:Timestamp.fromDate(actual),financialBidOpeningRecordedBy:uid,financialBidOpeningRecordedAt:serverTimestamp(),financialBidOpeningSource:"eproc_punjab",financialBidOpeningBidCount:input.bidsOpened,eProcFinancialOpeningReference:input.eProcReference?.trim()||"",financialBidsOpenedBy:uid,financialBidsOpenedAt:serverTimestamp(),financialBidOpeningRemarks:input.remarks?.trim()||"",financialOpeningOverrideReason:input.overrideReason?.trim()||"",updatedBy:uid,updatedAt:serverTimestamp()};
+ const batch=writeBatch(firestore);batch.update(doc(firestore,"tenders",tenderId),next);audit(batch,tenderId,"record_financial_bid_opening",uid,{financialBidOpeningRecorded:Boolean(tender.financialBidOpeningRecorded||tender.financialBidsOpenedAt)},next,input.overrideReason||input.remarks);await batch.commit();
 }
 
 export async function createOrUpdateFinancialBid(tenderId:string,tenderBidId:string,quotedAmount:number,remarks="",correctionReason=""){
  if(!Number.isFinite(quotedAmount)||quotedAmount<0)throw new Error("Quoted amount must be zero or greater.");
  const{firestore,uid}=context(),user=await profile(),tender=await tenderById(tenderId);if(!tender)throw new Error("Tender not found.");
  const admin=role(user)==="scert_admin";if(!assignedAgency(user,tender.executingAgencyId))throw new Error("You are not authorised to edit this financial evaluation.");
+ if(!tender.financialBidOpeningRecorded&&!tender.financialBidsOpenedAt)throw new Error("Record the Financial Bid Opening from eProc Punjab before entering financial bid values.");
  if(!admin&&!["in_progress","revision_required"].includes(tender.financialEvaluationStatus||"not_started"))throw new Error("Financial entries are locked in the current review status.");
  const bid=(await getTenderBidsForFinancialEvaluation(tenderId)).find(x=>x.id===tenderBidId);if(!bid||!isTechnicallyQualifiedBid(bid))throw new Error("Only a technically qualified, non-withdrawn bidder may receive a financial amount.");
  const existing=(await getFinancialBidsForTender(tenderId)).find(x=>x.tenderBidId===tenderBidId);if(admin&&existing&&existing.finalEvaluatedAmount!==quotedAmount&&!correctionReason.trim())throw new Error("SCERT correction reason is required.");

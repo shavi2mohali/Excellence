@@ -10,7 +10,8 @@
     "seed": "tsx scripts/seedMasterData.ts",
     "seed:diets": "tsx scripts/seedDiets.ts",
     "migrate:assignments": "tsx scripts/migrateAssignmentDefaults.ts",
-    "create:demo-admin": "tsx scripts/createDemoScertAdmin.ts"
+    "create:demo-admin": "tsx scripts/createDemoScertAdmin.ts",
+    "import:activity-financials": "tsx scripts/importDietActivityFinancials.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -19,7 +20,8 @@
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.1.1"
+    "react-router-dom": "^7.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

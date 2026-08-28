@@ -1,25 +1,5 @@
+import { useEffect, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
-
-const roles = ["scert_admin", "scert_viewer", "diet_nodal_officer", "agency_user", "finance_officer", "monitoring_officer"];
-
-export function AdminSettingsPage() {
-  return (
-    <>
-      <PageHeader eyebrow="Administration" title="Settings and master data" description="Placeholder area for user management, assignments, agency master, and future configuration screens." />
-
-      <section className="section-band">
-        <div className="section-title">
-          <h2>Configured user roles</h2>
-          <span>Foundation access model</span>
-        </div>
-        <div className="role-grid">
-          {roles.map((role) => (
-            <article className="role-card" key={role}>
-              <strong>{role.replaceAll("_", " ")}</strong>
-            </article>
-          ))}
-        </div>
-      </section>
-    </>
-  );
-}
+import { getDatabaseResetPreview, resetApplicationData, type ResetPreview } from "../services/databaseResetService";
+const roles=["scert_admin","scert_viewer","diet_nodal_officer","agency_user","finance_officer","monitoring_officer"];
+export function AdminSettingsPage(){const[preview,setPreview]=useState<ResetPreview|null>(null),[stage,setStage]=useState<0|1|2>(0),[confirmation,setConfirmation]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");async function load(){try{setPreview(await getDatabaseResetPreview());}catch(e){setError(e instanceof Error?e.message:"Unable to load reset status.");}}useEffect(()=>{void load();},[]);async function reset(){setBusy(true);setError("");try{const result=await resetApplicationData();if(result.status!=="completed")throw new Error(`Reset completed with errors: ${result.errors.join(" ")}`);setNotice("Application data reset successfully.");setStage(0);setConfirmation("");await load();setTimeout(()=>location.reload(),1200);}catch(e){setError(e instanceof Error?e.message:"Database reset failed.");}finally{setBusy(false);}}return <><PageHeader eyebrow="Administration" title="Settings and master data" description="System configuration and protected administrative utilities."/>{error&&<div className="error-banner">{error}</div>}{notice&&<div className="success-banner">{notice}</div>}<section className="section-band"><div className="section-title"><h2>Configured user roles</h2><span>Foundation access model</span></div><div className="role-grid">{roles.map(role=><article className="role-card" key={role}><strong>{role.replaceAll("_"," ")}</strong></article>)}</div></section><section className="section-band danger-zone"><div className="section-title"><div><span>Database Reset</span><h2>Database Management</h2></div><strong>Development / Administrative Utility</strong></div><div className="warning-banner"><strong>Danger Zone</strong><br/>Reset removes user-submitted and transactional application data. SCERT Admin accounts, DIET masters, activity masters, phases and system configuration are preserved.</div>{preview&&<div className="detail-grid"><div><span>Transactional records to delete</span><strong>{Object.values(preview.deleted).reduce((a,b)=>a+b,0)}</strong></div><div><span>SCERT Admins preserved</span><strong>{preview.preserved.scertAdmins||0}</strong></div><div><span>DIET masters preserved</span><strong>{preview.preserved.diets||0}</strong></div><div><span>Activities preserved</span><strong>{(preview.preserved.activities||0)+(preview.preserved.activityMaster||0)}</strong></div></div>}<button className="primary-button danger-button" disabled={!preview?.enabled} onClick={()=>setStage(1)}>Reset Application Data</button>{preview&&!preview.enabled&&<p className="muted-text">Database reset is disabled in this environment.</p>}</section>{stage>0&&<div className="reset-modal-backdrop" role="dialog" aria-modal="true"><section className="reset-modal"><h2>Reset Application Data?</h2><p>This will permanently delete user-submitted and transactional project data, including registrations, assignments, work packages, tenders, bidder/evaluation records, awards and work orders.</p><p>Non-SCERT user accounts will also be deleted. SCERT Admin accounts and required master data will be preserved. This action cannot be undone.</p>{stage===1?<div className="form-actions"><button className="secondary-button" onClick={()=>setStage(0)}>Cancel</button><button className="primary-button danger-button" onClick={()=>setStage(2)}>Continue</button></div>:<><label>Type <strong>RESET DATABASE</strong> to continue<input value={confirmation} onChange={e=>setConfirmation(e.target.value)} autoFocus/></label><div className="form-actions"><button className="secondary-button" onClick={()=>setStage(0)}>Cancel</button><button className="primary-button danger-button" disabled={confirmation!=="RESET DATABASE"||busy} onClick={()=>void reset()}>{busy?"Resetting...":"Permanently Reset Data"}</button></div></>}</section></div>}</>}

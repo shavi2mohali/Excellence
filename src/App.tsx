@@ -1,5 +1,5 @@
 import { NavLink, Route, Routes } from "react-router-dom";
-import { Activity, Building2, ClipboardList, FileText, HardHat, Landmark, LayoutDashboard, LogIn, LogOut, Package, Settings, ShieldCheck, UserRoundCog } from "lucide-react";
+import { Activity, Building2, CircleDollarSign, ClipboardList, FileText, HardHat, Landmark, LayoutDashboard, LogIn, LogOut, Package, Settings, ShieldCheck, UserRoundCog } from "lucide-react";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { RegistrationPendingPage } from "./pages/RegistrationPendingPage";
@@ -13,6 +13,7 @@ import { CivilAgenciesPage } from "./pages/CivilAgenciesPage";
 import { AgencyDetailPage } from "./pages/AgencyDetailPage";
 import { ActivityMasterPage } from "./pages/ActivityMasterPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
+import { ActivityFinancialsPage } from "./pages/ActivityFinancialsPage";
 import { WorkPackagesPage } from "./pages/WorkPackagesPage";
 import { WorkPackageDetailPage } from "./pages/WorkPackageDetailPage";
 import { ContractorsPage } from "./pages/ContractorsPage";
@@ -22,12 +23,11 @@ import { ScopesPage } from "./pages/ScopesPage";
 import { TendersPage } from "./pages/TendersPage";
 import { TenderFormPage } from "./pages/TenderFormPage";
 import { TenderDetailPage } from "./pages/TenderDetailPage";
+import { TenderBidsPage } from "./pages/TenderBidsPage";
 import { ComparativeStatementPage, FinancialEvaluationPage } from "./pages/FinancialEvaluationPage";
 import { AwardRecommendationPage } from "./pages/AwardRecommendationPage";
-import { TenderAwardsAdminPage } from "./pages/TenderAwardsAdminPage";
 import { TenderAwardDetailPage } from "./pages/TenderAwardDetailPage";
 import { WorkOrderDetailPage } from "./pages/WorkOrderDetailPage";
-import { TenderReviewsPage } from "./pages/TenderReviewsPage";
 import { useAuth } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AdminRoute } from "./components/auth/AdminRoute";
@@ -42,14 +42,13 @@ const baseNavItems = [
   { to: "/work-packages", label: "Work Packages", icon: Package },
   { to: "/tenders", label: "Tenders / NIT", icon: FileText },
   { to: "/activities", label: "Activities", icon: Activity },
-  { to: "/settings", label: "Settings", icon: Settings },
 ];
 const adminNavItems = [
+  { to: "/settings", label: "System", icon: Settings },
+  { to: "/admin/activity-financials", label: "Activity Financial Approvals", icon: CircleDollarSign },
   { to: "/admin/registration-requests", label: "Registration Requests", icon: ShieldCheck },
   { to: "/admin/user-assignments", label: "User Assignments", icon: UserRoundCog },
   { to: "/admin/scope-reviews", label: "Scope Reviews", icon: ClipboardList },
-  { to: "/admin/tender-reviews", label: "Tender Approvals", icon: FileText },
-  { to: "/admin/tender-awards", label: "Tender Awards", icon: ShieldCheck },
 ];
 
 function PortalLayout() {
@@ -57,6 +56,8 @@ function PortalLayout() {
   const systemRole = profile?.systemRole || profile?.role;
   const restrictedNav = systemRole === "diet_nodal_officer"
     ? [baseNavItems[0], { ...baseNavItems[1], label: "My DIET" }, baseNavItems[2], baseNavItems[4], baseNavItems[5], baseNavItems[6], baseNavItems[3]]
+    : systemRole === "architecture_user"
+      ? [baseNavItems[0], baseNavItems[4]]
     : systemRole === "agency_user"
       ? [baseNavItems[0], baseNavItems[1], baseNavItems[2], baseNavItems[3], baseNavItems[4], baseNavItems[5], baseNavItems[6]]
       : baseNavItems;
@@ -70,10 +71,10 @@ function PortalLayout() {
     <Route path="/contractors" element={<ContractorsPage/>}/><Route path="/contractors/new" element={<ContractorFormPage/>}/><Route path="/contractors/:id/edit" element={<ContractorFormPage/>}/><Route path="/contractors/:id" element={<ContractorDetailPage/>}/>
     <Route path="/scopes" element={<ScopesPage/>}/>
     <Route path="/work-packages" element={<WorkPackagesPage/>}/><Route path="/work-packages/:id" element={<WorkPackageDetailPage/>}/>
-    <Route path="/tenders" element={<TendersPage/>}/><Route path="/tenders/new" element={<TenderFormPage/>}/><Route path="/tenders/:id/edit" element={<TenderFormPage/>}/><Route path="/tenders/:tenderId/financial-evaluation" element={<FinancialEvaluationPage/>}/><Route path="/tenders/:tenderId/comparative-statement" element={<ComparativeStatementPage/>}/><Route path="/tenders/:tenderId/award-recommendation" element={<AwardRecommendationPage/>}/><Route path="/tenders/:id" element={<TenderDetailPage/>}/>
+    <Route path="/tenders" element={<TendersPage/>}/><Route path="/tenders/new" element={<TenderFormPage/>}/><Route path="/tenders/:id/edit" element={<TenderFormPage/>}/><Route path="/tenders/:tenderId/bids" element={<TenderBidsPage/>}/><Route path="/tenders/:tenderId/technical-evaluation" element={<TenderBidsPage/>}/><Route path="/tenders/:tenderId/financial-evaluation" element={<FinancialEvaluationPage/>}/><Route path="/tenders/:tenderId/comparative-statement" element={<ComparativeStatementPage/>}/><Route path="/tenders/:tenderId/award-recommendation" element={<AwardRecommendationPage/>}/><Route path="/tenders/:id" element={<TenderDetailPage/>}/>
     <Route path="/tender-awards/:id" element={<TenderAwardDetailPage/>}/><Route path="/work-orders/:id" element={<WorkOrderDetailPage/>}/>
-    <Route path="/activities" element={<ActivityMasterPage/>}/><Route path="/settings" element={<AdminSettingsPage/>}/>
-    <Route element={<AdminRoute/>}><Route path="/admin/registration-requests" element={<RegistrationRequestsPage/>}/><Route path="/admin/user-assignments" element={<UserAssignmentsPage/>}/><Route path="/admin/scope-reviews" element={<ScopesPage/>}/><Route path="/admin/tender-reviews" element={<TenderReviewsPage/>}/><Route path="/admin/tender-awards" element={<TenderAwardsAdminPage/>}/></Route>
+    <Route path="/activities" element={<ActivityMasterPage/>}/>
+    <Route element={<AdminRoute/>}><Route path="/settings" element={<AdminSettingsPage/>}/><Route path="/admin/activity-financials" element={<ActivityFinancialsPage/>}/><Route path="/admin/registration-requests" element={<RegistrationRequestsPage/>}/><Route path="/admin/user-assignments" element={<UserAssignmentsPage/>}/><Route path="/admin/scope-reviews" element={<ScopesPage/>}/></Route>
   </Routes></main></div>;
 }
 

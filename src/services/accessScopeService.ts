@@ -38,6 +38,7 @@ export async function getUserAccessScope(profile: AppUser): Promise<AccessScope>
       districtIds: unique(relevant.map((item) => item.districtId)),
     };
   }
+  if(role==="architecture_user")return{accessType:"architecture",dietIds:[],agencyIds:[],districtIds:[]};
 
   return { accessType: "none", dietIds: [], agencyIds: [], districtIds: [] };
 }

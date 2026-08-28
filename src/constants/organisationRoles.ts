@@ -16,6 +16,11 @@ export const organisationRoleOptions: { value: OrganisationRole; label: string; 
     label: "RDP — Rural Development and Panchayats Department",
     requestedSystemRole: "agency_user",
   },
+  {
+    value: "architecture_department",
+    label: "Department of Architecture, Punjab",
+    requestedSystemRole: "architecture_user",
+  },
 ];
 
 export function getOrganisationRoleLabel(role: OrganisationRole) {

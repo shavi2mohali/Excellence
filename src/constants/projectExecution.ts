@@ -18,6 +18,8 @@ export const assignmentStatusLabels: Record<DietAgencyAssignmentStatus, string> 
 };
 
 export const workPackageStatusLabels: Record<WorkPackageStatus, string> = {
+  sent_to_diet:"Sent to DIET",diet_review:"DIET Review",diet_revision_requested:"DIET Revision Requested",agency_revision:"Agency Revision",diet_concurred:"DIET Concurred",ready_for_scert:"Ready for SCERT",
+  submitted_to_scert:"Submitted to SCERT",scert_under_review:"SCERT Under Review",scert_revision_required:"SCERT Revision Required",
   draft: "Draft", submitted: "Submitted", under_review: "Under Review", revision_required: "Revision Required", approved_for_tender: "Approved for Tender",
   tender_in_progress: "Tender in Progress", awarded: "Awarded", work_in_progress: "Work in Progress",
   completed: "Completed", cancelled: "Cancelled",

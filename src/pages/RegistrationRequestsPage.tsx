@@ -6,10 +6,10 @@ import { createAgency, getAgencies, normaliseAgencyName, type AgencyInput } from
 import { getDiets } from "../lib/firestore";
 import type { Agency, AgencyType, ApprovalStatus, Diet, RegistrationRequest, SystemRole } from "../types";
 
-const approvableRoles: SystemRole[] = ["diet_nodal_officer", "agency_user", "scert_viewer", "finance_officer", "monitoring_officer"];
+const approvableRoles: SystemRole[] = ["diet_nodal_officer", "agency_user", "architecture_user", "scert_viewer", "finance_officer", "monitoring_officer"];
 
 function defaultRole(request: RegistrationRequest): SystemRole {
-  return request.organisationRole === "diet" ? "diet_nodal_officer" : "agency_user";
+  return request.organisationRole === "diet" ? "diet_nodal_officer" : request.organisationRole === "architecture_department" ? "architecture_user" : "agency_user";
 }
 
 function agencyTypeForRequest(request: RegistrationRequest): AgencyType {

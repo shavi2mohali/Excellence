@@ -1,145 +1,33 @@
-import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { arrayUnion, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, writeBatch } from "firebase/firestore";
 import { auth, db, getFirebaseConfigurationMessage } from "../lib/firebase";
 import { calculateFundingShare, getPackageFinancialBasis } from "../utils/fundingCalculations";
-import type { DietAgencyAssignment, ScopeOfWork, WorkCategory, WorkPackage } from "../types";
+import type { DietActivityFinancial, DietAgencyAssignment, ScopeOfWork, WorkCategory, WorkPackage, WorkPackageActivityAllocation } from "../types";
 
-export type WorkPackageInput = {
-  assignment: DietAgencyAssignment;
-  scope?: ScopeOfWork;
-  packageTitle: string;
-  packageDescription: string;
-  workCategory: WorkCategory;
-  activityIds: string[];
-  estimatedCost: number;
-  administrativeApprovalAmount?: number;
-  technicalSanctionAmount?: number;
-  remarks?: string;
-};
+export type WorkPackageInput={assignment:DietAgencyAssignment;scope?:ScopeOfWork;packageTitle:string;packageDescription:string;workCategory:WorkCategory;activityAllocations:WorkPackageActivityAllocation[];administrativeApprovalAmount?:number;technicalSanctionAmount?:number;remarks?:string};
+function context(){if(!db)throw new Error(getFirebaseConfigurationMessage());if(!auth?.currentUser)throw new Error("You must be signed in.");return{firestore:db,uid:auth.currentUser.uid};}
+async function currentRole(){const{firestore,uid}=context(),snap=await getDoc(doc(firestore,"users",uid));return String(snap.data()?.systemRole||snap.data()?.role||"");}
+const mapPackage=(s:{id:string;data():unknown})=>({id:s.id,...s.data() as object}) as WorkPackage;
+const codePart=(v:string)=>v.replace(/^DIET\s+/i,"").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").toUpperCase();
+export async function getWorkPackages(){const{firestore}=context();return(await getDocs(collection(firestore,"workPackages"))).docs.map(mapPackage);}
+export async function getWorkPackage(id:string){const{firestore}=context(),s=await getDoc(doc(firestore,"workPackages",id));return s.exists()?mapPackage(s):null;}
+export async function getWorkPackagesForDiet(dietId:string){const{firestore}=context();return(await getDocs(query(collection(firestore,"workPackages"),where("dietId","==",dietId)))).docs.map(mapPackage);}
+export async function getWorkPackagesForAgency(agencyId:string){const{firestore}=context();return(await getDocs(query(collection(firestore,"workPackages"),where("executingAgencyId","==",agencyId)))).docs.map(mapPackage);}
 
-function context() {
-  if (!db) throw new Error(getFirebaseConfigurationMessage());
-  if (!auth?.currentUser) throw new Error("You must be signed in.");
-  return { firestore: db, uid: auth.currentUser.uid };
-}
-
-const mapPackage = (snapshot: { id: string; data(): unknown }) => ({ id: snapshot.id, ...(snapshot.data() as object) }) as WorkPackage;
-const codePart = (value: string) => value.replace(/^DIET\s+/i, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toUpperCase();
-
-export async function getWorkPackages() {
-  const { firestore } = context();
-  return (await getDocs(collection(firestore, "workPackages"))).docs.map(mapPackage);
-}
-export async function getWorkPackage(id: string) {
-  const { firestore } = context();
-  const snapshot = await getDoc(doc(firestore, "workPackages", id));
-  return snapshot.exists() ? mapPackage(snapshot) : null;
-}
-export async function getWorkPackagesForDiet(dietId: string) {
-  const { firestore } = context();
-  return (await getDocs(query(collection(firestore, "workPackages"), where("dietId", "==", dietId)))).docs.map(mapPackage);
-}
-export async function getWorkPackagesForAgency(agencyId: string) {
-  const { firestore } = context();
-  return (await getDocs(query(collection(firestore, "workPackages"), where("executingAgencyId", "==", agencyId)))).docs.map(mapPackage);
-}
-
-function validate(input: WorkPackageInput) {
-  if (input.assignment.status !== "active") throw new Error("Work packages can only be created under an active assignment.");
-  if (input.scope && (input.scope.dietId !== input.assignment.dietId || input.scope.executingAgencyId !== input.assignment.executingAgencyId)) throw new Error("The selected scope does not belong to this DIET and executing agency.");
-  if (input.scope && input.activityIds.some((id) => !input.scope?.activityIds.includes(id))) throw new Error("Work package activities must belong to the selected scope.");
-  if (!input.packageTitle.trim() || !input.packageDescription.trim() || !input.workCategory) throw new Error("Title, description, and category are required.");
-  if (!Number.isFinite(input.estimatedCost) || input.estimatedCost <= 0) throw new Error("Estimated cost must be greater than zero.");
-  if (new Set(input.activityIds).size !== input.activityIds.length) throw new Error("An activity cannot be selected more than once.");
-}
-
-function packageData(input: WorkPackageInput) {
-  const estimatedCost = Number(input.estimatedCost);
-  const administrativeApprovalAmount = Number(input.administrativeApprovalAmount || 0);
-  const technicalSanctionAmount = Number(input.technicalSanctionAmount || 0);
-  const basis = getPackageFinancialBasis({ estimatedCost, administrativeApprovalAmount, technicalSanctionAmount });
-  const shares = calculateFundingShare(basis);
-  return {
-    packageTitle: input.packageTitle.trim(), packageDescription: input.packageDescription.trim(),
-    dietId: input.assignment.dietId, dietName: input.assignment.dietName, districtId: input.assignment.districtId || "",
-    districtName: input.assignment.districtName || "", phaseId: input.assignment.phaseId || "", phaseName: input.assignment.phaseName || "",
-    dietAgencyAssignmentId: input.assignment.id, executingAgencyId: input.assignment.executingAgencyId,
-    scopeOfWorkId: input.scope?.id || "", scopeOfWorkTitle: input.scope?.scopeTitle || "",
-    executingAgencyName: input.assignment.executingAgencyName, executingAgencyType: input.assignment.executingAgencyType || "",
-    workCategory: input.workCategory, activityIds: [...new Set(input.activityIds)], estimatedCost,
-    administrativeApprovalAmount, technicalSanctionAmount, fundingPattern: "60:40", centralSharePercent: 60,
-    stateSharePercent: 40, centralShareAmount: shares.centralShare, stateShareAmount: shares.stateShare,
-    remarks: input.remarks?.trim() || "",
-  };
-}
-
-export async function createWorkPackage(input: WorkPackageInput) {
-  if (!input.scope) throw new Error("Select a Scope of Work before creating a work package.");
-  validate(input);
-  const { firestore, uid } = context();
-  const packageRef = doc(collection(firestore, "workPackages"));
-  const counterRef = doc(firestore, "packageCounters", input.assignment.dietId);
-  const auditRef = doc(collection(firestore, "auditLogs"));
-  const data = packageData(input);
-  await runTransaction(firestore, async (transaction) => {
-    const counter = await transaction.get(counterRef);
-    const next = Number(counter.data()?.nextNumber || 1);
-    const phase = codePart(input.assignment.phaseName || input.assignment.phaseId || "PHASE").replace(/^PHASE-?/, "");
-    const packageCode = `COE/${phase}/${codePart(input.assignment.dietName)}/${String(next).padStart(3, "0")}`;
-    const record = { id: packageRef.id, packageCode, ...data, status: "draft", createdBy: uid, createdAt: serverTimestamp(), updatedBy: uid, updatedAt: serverTimestamp() };
-    transaction.set(counterRef, { nextNumber: next + 1, updatedAt: serverTimestamp() }, { merge: true });
-    transaction.set(packageRef, record);
-    transaction.set(auditRef, { entityType: "workPackage", entityId: packageRef.id, action: "work_package_created", performedBy: uid, performedAt: serverTimestamp(), previousData: null, newData: record, remarks: data.remarks });
-  });
-  return packageRef.id;
-}
-
-export async function updateWorkPackage(id: string, input: WorkPackageInput) {
-  validate(input);
-  const { firestore, uid } = context();
-  const ref = doc(firestore, "workPackages", id);
-  const previous = await getDoc(ref);
-  if (!previous.exists()) throw new Error("Work package not found.");
-  const data = { ...packageData(input), updatedBy: uid, updatedAt: serverTimestamp() };
-  const batch = writeBatch(firestore);
-  batch.update(ref, data);
-  batch.set(doc(collection(firestore, "auditLogs")), { entityType: "workPackage", entityId: id, action: "work_package_updated", performedBy: uid, performedAt: serverTimestamp(), previousData: previous.data(), newData: data, remarks: data.remarks });
-  await batch.commit();
-}
-
-export async function submitWorkPackageForReview(id: string) {
-  const item = await getWorkPackage(id);
-  if (!item?.scopeOfWorkId) throw new Error("Select an approved Scope of Work before submitting this package.");
-  const { firestore } = context();
-  const scope = await getDoc(doc(firestore, "scopeOfWorks", item.scopeOfWorkId));
-  if (!scope.exists() || scope.data().status !== "approved") throw new Error("The linked Scope of Work must be approved before package submission.");
-  await transition(id, ["draft", "revision_required"], "submitted", "work_package_submitted");
-}
-
-export async function reviewWorkPackage(id: string) { await transition(id, ["submitted"], "under_review", "work_package_review_started"); }
-export async function returnWorkPackageForRevision(id: string) { await transition(id, ["submitted", "under_review"], "revision_required", "package_returned_for_revision"); }
-
-export async function approveWorkPackageForTender(id: string) {
-  const { firestore } = context();
-  const target = await getDoc(doc(firestore, "workPackages", id));
-  if (!target.exists()) throw new Error("Work package not found.");
-  const item = mapPackage(target);
-  if (!item.scopeOfWorkId) throw new Error("Link this legacy package to an approved Scope of Work before approval.");
-  const scope = await getDoc(doc(firestore, "scopeOfWorks", item.scopeOfWorkId));
-  if (!scope.exists() || scope.data().status !== "approved") throw new Error("The linked Scope of Work must be approved first.");
-  const packages = await getWorkPackagesForDiet(item.dietId);
-  const duplicate = packages.some((other) => other.id !== id && !["cancelled", "completed"].includes(other.status) && other.activityIds?.some((activityId) => item.activityIds.includes(activityId)));
-  if (duplicate) throw new Error("This activity is already included in another active work package for this DIET.");
-  await transition(id, ["under_review"], "approved_for_tender", "approved_for_tender");
-}
-
-async function transition(id: string, expected: string[], status: string, action: string) {
-  const { firestore, uid } = context();
-  const ref = doc(firestore, "workPackages", id);
-  const previous = await getDoc(ref);
-  if (!previous.exists() || !expected.includes(previous.data().status)) throw new Error("Work package is not in the required status for this action.");
-  const next = { status, updatedBy: uid, updatedAt: serverTimestamp() };
-  const batch = writeBatch(firestore);
-  batch.update(ref, next);
-  batch.set(doc(collection(firestore, "auditLogs")), { entityType: "workPackage", entityId: id, action, performedBy: uid, performedAt: serverTimestamp(), previousData: previous.data(), newData: next, remarks: "" });
-  await batch.commit();
-}
+function validate(input:WorkPackageInput){if(input.assignment.status!=="active")throw new Error("Work packages require an active assignment.");if(!input.scope)throw new Error("Select a Scope of Work.");if(!["released_to_executing_agency","mutually_agreed","approved"].includes(input.scope.status))throw new Error("Work Packages require a Scope released to the Executing Agency.");if(input.scope.dietId!==input.assignment.dietId||input.scope.executingAgencyId!==input.assignment.executingAgencyId)throw new Error("The Scope does not belong to this DIET and agency.");if(!input.packageTitle.trim()||!input.packageDescription.trim()||!input.workCategory)throw new Error("Title, description, and category are required.");if(!input.activityAllocations.length)throw new Error("Allocate an amount to at least one Scope activity.");const ids=input.activityAllocations.map(x=>x.activityId);if(new Set(ids).size!==ids.length)throw new Error("An activity cannot be allocated twice.");if(ids.some(id=>!input.scope!.activityIds.includes(id)))throw new Error("Package activities must belong to the selected Scope.");if(input.activityAllocations.some(x=>!Number.isFinite(x.packageAllocatedAmount)||x.packageAllocatedAmount<=0))throw new Error("Every activity allocation must be greater than zero.");}
+function data(input:WorkPackageInput){const activityAllocations=input.activityAllocations.map(x=>({...x})),estimatedCost=activityAllocations.reduce((n,x)=>n+x.packageAllocatedAmount,0),administrativeApprovalAmount=Number(input.administrativeApprovalAmount||0),technicalSanctionAmount=Number(input.technicalSanctionAmount||0),shares=calculateFundingShare(getPackageFinancialBasis({estimatedCost,administrativeApprovalAmount,technicalSanctionAmount}));return{packageTitle:input.packageTitle.trim(),packageDescription:input.packageDescription.trim(),dietId:input.assignment.dietId,dietName:input.assignment.dietName,districtId:input.assignment.districtId||"",districtName:input.assignment.districtName||"",phaseId:input.assignment.phaseId||"",phaseName:input.assignment.phaseName||"",dietAgencyAssignmentId:input.assignment.id,executingAgencyId:input.assignment.executingAgencyId,scopeOfWorkId:input.scope!.id,scopeOfWorkTitle:input.scope!.scopeTitle,executingAgencyName:input.assignment.executingAgencyName,executingAgencyType:input.assignment.executingAgencyType||"",workCategory:input.workCategory,activityIds:activityAllocations.map(x=>x.activityId),activityAllocations,financialBreakdownStatus:"complete" as const,estimatedCost,administrativeApprovalAmount,technicalSanctionAmount,fundingPattern:"60:40" as const,centralSharePercent:60 as const,stateSharePercent:40 as const,centralShareAmount:shares.centralShare,stateShareAmount:shares.stateShare,remarks:input.remarks?.trim()||""};}
+async function commitments(dietId:string,excludeId:string){const map=new Map<string,number>();for(const item of await getWorkPackagesForDiet(dietId)){if(item.id===excludeId||item.status==="cancelled")continue;for(const x of item.activityAllocations||[])map.set(x.activityId,(map.get(x.activityId)||0)+Number(x.packageAllocatedAmount||0));}return map;}
+async function save(id:string|undefined,input:WorkPackageInput){if(await currentRole()!=="agency_user")throw new Error("Only the assigned Executing Agency can create or revise a Work Package.");validate(input);const{firestore,uid}=context(),ref=id?doc(firestore,"workPackages",id):doc(collection(firestore,"workPackages")),previous=id?await getDoc(ref):null;if(id&&!previous?.exists())throw new Error("Work package not found.");const old=previous?.data() as WorkPackage|undefined;if(old&&!['draft','agency_revision','diet_revision_requested','scert_revision_required','revision_required'].includes(old.status))throw new Error("This Work Package is not editable by the Agency.");const other=await commitments(input.assignment.dietId,ref.id),recordData=data(input),counterRef=doc(firestore,"packageCounters",input.assignment.dietId),auditRef=doc(collection(firestore,"auditLogs"));await runTransaction(firestore,async tx=>{const fRefs=recordData.activityAllocations.map(x=>doc(firestore,"dietActivityFinancials",x.financialRecordId)),fSnaps=await Promise.all(fRefs.map(x=>tx.get(x)));for(let i=0;i<recordData.activityAllocations.length;i++){const x=recordData.activityAllocations[i],f=fSnaps[i].data() as DietActivityFinancial|undefined;if(!f||f.active===false||f.dietId!==recordData.dietId||f.activityId!==x.activityId)throw new Error(`${x.activityName||"Activity"} has no valid active DIET financial approval.`);if(f.agencyAllocation<=0)throw new Error(`${f.activityName} is Principal-only.`);const available=f.agencyAllocation-(other.get(x.activityId)||0);if(x.packageAllocatedAmount>available+.01)throw new Error(`${f.activityName} exceeds the remaining Agency Allocation by ₹${(x.packageAllocatedAmount-available).toLocaleString("en-IN")}.`);recordData.activityAllocations[i]={...x,activityCode:f.activityCode,activityName:f.activityName,currentEffectiveApprovedAmount:f.currentEffectiveApprovedAmount,principalAllocation:f.principalAllocation,agencyAllocation:f.agencyAllocation};}let packageCode=old?.packageCode;if(!packageCode){const c=await tx.get(counterRef),next=Number(c.data()?.nextNumber||1),phase=codePart(input.assignment.phaseName||input.assignment.phaseId||"PHASE").replace(/^PHASE-?/,"");packageCode=`COE/${phase}/${codePart(input.assignment.dietName)}/${String(next).padStart(3,"0")}`;tx.set(counterRef,{nextNumber:next+1,updatedAt:serverTimestamp()},{merge:true});}const revision=old?Number(old.packageRevision||1)+1:1,handshake={dietConcurrenceStatus:"pending" as const,agencyFinalisationStatus:"pending" as const,completed:false,version:revision},status=old&&old.status!=="draft"?"agency_revision":"draft",record={id:ref.id,packageCode,...recordData,status,packageRevision:revision,handshake,createdBy:old?.createdBy||uid,createdAt:old?.createdAt||serverTimestamp(),updatedBy:uid,updatedAt:serverTimestamp()};tx.set(ref,record);tx.set(auditRef,{entityType:"workPackage",entityId:ref.id,action:old?"work_package_financial_breakdown_updated":"work_package_created",performedBy:uid,performedAt:serverTimestamp(),previousData:old||null,newData:record,remarks:recordData.remarks});});return ref.id;}
+export const createWorkPackage=(input:WorkPackageInput)=>save(undefined,input);
+export const updateWorkPackage=(id:string,input:WorkPackageInput)=>save(id,input);
+async function validateExisting(id:string){const item=await getWorkPackage(id);if(!item)throw new Error("Work package not found.");if(!item.scopeOfWorkId)throw new Error("Link this package to a released Scope.");const{firestore}=context(),scope=await getDoc(doc(firestore,"scopeOfWorks",item.scopeOfWorkId));if(!scope.exists()||!["released_to_executing_agency","mutually_agreed","approved"].includes(scope.data().status))throw new Error("The linked Scope must be released to the Executing Agency first.");if(!item.activityAllocations?.length)throw new Error(item.activityIds?.length>1?"This legacy package requires an activity-wise financial breakdown before submission or approval.":"Activity-wise financial breakdown is required before submission or approval.");if(item.activityAllocations.some(x=>!scope.data().activityIds.includes(x.activityId)))throw new Error("A package activity is not in the mutually agreed Scope.");const sum=item.activityAllocations.reduce((n,x)=>n+Number(x.packageAllocatedAmount||0),0);if(Math.abs(sum-item.estimatedCost)>.01)throw new Error("Activity allocation total must equal Estimated Cost.");const other=await commitments(item.dietId,item.id),snaps=await Promise.all(item.activityAllocations.map(x=>getDoc(doc(firestore,"dietActivityFinancials",x.financialRecordId))));for(let i=0;i<item.activityAllocations.length;i++){const x=item.activityAllocations[i],f=snaps[i].data() as DietActivityFinancial|undefined;if(!f||f.active===false||f.dietId!==item.dietId||f.activityId!==x.activityId)throw new Error("An activity financial approval is missing or invalid.");if(x.packageAllocatedAmount>f.agencyAllocation-(other.get(x.activityId)||0)+.01)throw new Error(`${f.activityName} exceeds its current Agency Allocation.`);}return item;}
+async function transition(id:string,expected:string[],status:string,action:string,comment="",fields:Record<string,unknown>={}){const{firestore,uid}=context(),ref=doc(firestore,"workPackages",id),previous=await getDoc(ref);if(!previous.exists()||!expected.includes(previous.data().status))throw new Error("Work package is not in the required status for this action.");const r=await currentRole(),entry=comment.trim()?{comment:comment.trim(),commentBy:uid,role:r,timestamp:new Date(),revision:Number(previous.data().packageRevision||1),action}:null,next={status,...fields,updatedBy:uid,updatedAt:serverTimestamp(),...(entry?{reviewHistory:arrayUnion(entry)}:{})},batch=writeBatch(firestore);batch.update(ref,next);batch.set(doc(collection(firestore,"auditLogs")),{entityType:"workPackage",entityId:id,action,performedBy:uid,performedAt:serverTimestamp(),previousData:previous.data(),newData:next,remarks:comment.trim()});await batch.commit();}
+export async function sendWorkPackageToDiet(id:string){if(await currentRole()!=="agency_user")throw new Error("Only the Agency can send a package to DIET.");await validateExisting(id);const{uid}=context();return transition(id,["draft","agency_revision","diet_revision_requested","scert_revision_required","revision_required"],"sent_to_diet","work_package_sent_to_diet","",{sentToDietBy:uid,sentToDietAt:serverTimestamp(),dietReviewStatus:"pending"});}
+export async function startDietWorkPackageReview(id:string){if(await currentRole()!=="diet_nodal_officer")throw new Error("Only DIET can review this package.");return transition(id,["sent_to_diet"],"diet_review","work_package_diet_review_started");}
+export async function requestDietWorkPackageRevision(id:string,comment:string){if(!comment.trim())throw new Error("DIET revision comments are required.");if(await currentRole()!=="diet_nodal_officer")throw new Error("Only DIET can request revision.");const{uid}=context();return transition(id,["sent_to_diet","diet_review"],"diet_revision_requested","work_package_diet_revision_requested",comment,{dietReviewStatus:"revision_requested",dietReviewedBy:uid,dietReviewedAt:serverTimestamp(),dietReviewComments:comment.trim(),"handshake.dietConcurrenceStatus":"revision_requested","handshake.completed":false});}
+export async function concurWorkPackageByDiet(id:string,comment=""){if(await currentRole()!=="diet_nodal_officer")throw new Error("Only DIET can concur with this package.");const item=await validateExisting(id),revision=Number(item.packageRevision||1),{uid}=context();return transition(id,["sent_to_diet","diet_review"],"diet_concurred","work_package_diet_concurred",comment,{dietReviewStatus:"concurred",dietReviewedBy:uid,dietReviewedAt:serverTimestamp(),dietReviewComments:comment.trim(),handshake:{...(item.handshake||{agencyFinalisationStatus:"pending",completed:false,version:revision}),dietConcurrenceStatus:"concurred",dietConcurredBy:uid,dietConcurredAt:serverTimestamp(),dietConcurredRevision:revision,agencyFinalisationStatus:"pending",completed:false,version:revision}});}
+export async function finaliseWorkPackageByAgency(id:string){if(await currentRole()!=="agency_user")throw new Error("Only the Agency can finalise this package.");const item=await validateExisting(id),revision=Number(item.packageRevision||1);if(item.handshake?.dietConcurrenceStatus!=="concurred"||item.handshake.dietConcurredRevision!==revision)throw new Error("Current-revision DIET concurrence is required.");const{uid}=context();return transition(id,["diet_concurred"],"ready_for_scert","work_package_handshake_completed","",{handshake:{...item.handshake,agencyFinalisationStatus:"finalised",agencyFinalisedBy:uid,agencyFinalisedAt:serverTimestamp(),agencyFinalisedRevision:revision,completed:true,completedAt:serverTimestamp(),version:revision}});}
+export async function submitWorkPackageToScert(id:string){if(await currentRole()!=="agency_user")throw new Error("Only the Agency can submit to SCERT.");const item=await validateExisting(id),revision=Number(item.packageRevision||1);if(!item.handshake?.completed||item.handshake.dietConcurredRevision!==revision||item.handshake.agencyFinalisedRevision!==revision)throw new Error("DIET concurrence and Agency finalisation must match the current package revision.");const{uid}=context();return transition(id,["ready_for_scert"],"submitted_to_scert","work_package_submitted_to_scert","",{submittedToScertBy:uid,submittedToScertAt:serverTimestamp()});}
+export async function reviewWorkPackage(id:string){if(await currentRole()!=="scert_admin")throw new Error("SCERT Admin permission is required.");return transition(id,["submitted_to_scert","submitted"],"scert_under_review","work_package_scert_review_started");}
+export async function returnWorkPackageForRevision(id:string,comment=""){if(!comment.trim())throw new Error("SCERT revision comments are required.");if(await currentRole()!=="scert_admin")throw new Error("SCERT Admin permission is required.");const{uid}=context();return transition(id,["submitted_to_scert","scert_under_review","submitted","under_review"],"scert_revision_required","work_package_scert_revision_required",comment,{scertRevisionComments:comment.trim(),scertReviewedBy:uid,scertReviewedAt:serverTimestamp()});}
+export async function approveWorkPackageForTender(id:string){if(await currentRole()!=="scert_admin")throw new Error("SCERT Admin permission is required.");const item=await validateExisting(id),revision=Number(item.packageRevision||1),legacy=["submitted","under_review"].includes(item.status)&&!item.packageRevision;if(!legacy&&(!item.handshake?.completed||item.handshake.dietConcurredRevision!==revision||item.handshake.agencyFinalisedRevision!==revision))throw new Error("The DIET–Agency handshake is incomplete or stale.");await transition(id,["submitted_to_scert","scert_under_review","submitted","under_review"],"approved_for_tender","approved_for_tender");}
+export const submitWorkPackageForReview=sendWorkPackageToDiet;

@@ -81,6 +81,17 @@ service cloud.firestore {
         || assignedToDiet(data.dietId)
         || assignedToAgency(data.executingAgencyId);
     }
+    function isArchitectureUser(){return role()=='architecture_user';}
+    function architectureScopeStatus(status){return status in ['sent_to_architecture','architecture_review','architecture_revision_requested','architectural_drawings_issued','diet_drawing_review','drawing_revision_requested','diet_drawing_accepted','submitted_to_scert_for_drawing_approval','scert_drawing_review','scert_drawing_revision_required','architectural_drawings_approved'];}
+
+    function canReadActivityFinancial(data) {
+      return canViewAllDiets()
+        || assignedToDiet(data.dietId)
+        || (role() == 'agency_user'
+          && currentUser().assignmentStatus == 'assigned'
+          && (data.get('executingAgencyIds', []).hasAny(currentUser().get('assignedAgencyIds', []))
+            || currentUser().get('primaryAgencyId', '') in data.get('executingAgencyIds', [])));
+    }
 
     function packageIdentityUnchanged() {
       return request.resource.data.dietId == resource.data.dietId
@@ -131,12 +142,45 @@ service cloud.firestore {
 
     function dietScopeUpdateAllowed() {
       return assignedToDiet(resource.data.dietId)
-        && resource.data.status in ['draft', 'revision_required']
-        && request.resource.data.status in ['draft', 'revision_required', 'submitted']
+        && resource.data.status in ['draft','architecture_revision_requested','diet_drawing_review','diet_drawing_accepted','drawing_revision_requested','revision_requested','revision_required']
+        && request.resource.data.status in ['draft','architecture_revision_requested','sent_to_architecture','drawing_revision_requested','diet_drawing_accepted','submitted_to_scert_for_drawing_approval','released_to_executing_agency']
         && request.resource.data.updatedBy == request.auth.uid
         && scopeIdentityUnchanged()
         && request.resource.data.get('approvedBy', '') == resource.data.get('approvedBy', '')
         && request.resource.data.get('approvedAt', null) == resource.data.get('approvedAt', null);
+    }
+    function architectureScopeUpdateAllowed(){return isArchitectureUser()&&architectureScopeStatus(resource.data.status)&&request.resource.data.status in ['architecture_review','architecture_revision_requested','diet_drawing_review']&&scopeIdentityUnchanged()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','currentDrawingRevision','dietAcceptedDrawingRevision','scertApprovedDrawingRevision','reviewHistory','updatedBy','updatedAt']);}
+
+    function agencyScopeReviewAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status in ['sent_to_agency', 'agency_review']
+        && request.resource.data.status in ['agency_review', 'revision_requested', 'agency_accepted']
+        && scopeIdentityUnchanged()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'status', 'agencyReviewStatus', 'agencyReviewedBy', 'agencyReviewedAt', 'agencyComments',
+          'agencyAcceptedBy', 'agencyAcceptedAt', 'reviewHistory', 'updatedBy', 'updatedAt'
+        ]);
+    }
+
+    function agencyPackageWorkflowAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && packageIdentityUnchanged()
+        && hasValidActiveAssignment(request.resource.data)
+        && hasValidScope(request.resource.data)
+        && packageActivitiesWithinScope(request.resource.data)
+        && resource.data.status in ['draft', 'agency_revision', 'diet_revision_requested', 'diet_concurred', 'ready_for_scert', 'scert_revision_required', 'revision_required']
+        && request.resource.data.status in ['draft', 'agency_revision', 'sent_to_diet', 'ready_for_scert', 'submitted_to_scert'];
+    }
+
+    function dietPackageReviewAllowed() {
+      return assignedToDiet(resource.data.dietId)
+        && packageIdentityUnchanged()
+        && resource.data.status in ['sent_to_diet', 'diet_review']
+        && request.resource.data.status in ['diet_review', 'diet_revision_requested', 'diet_concurred']
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'status', 'dietReviewStatus', 'dietReviewedBy', 'dietReviewedAt', 'dietReviewComments',
+          'handshake', 'reviewHistory', 'updatedBy', 'updatedAt'
+        ]);
     }
 
     function isAssignedAgencyUser() {
@@ -199,7 +243,7 @@ service cloud.firestore {
 
     function agencyTenderPublicationAllowed() {
       return assignedToAgency(resource.data.executingAgencyId)
-        && resource.data.status == 'approved_for_publication'
+        && resource.data.status in ['draft', 'revision_required', 'approved_for_publication']
         && request.resource.data.status == 'published'
         && request.resource.data.publishedBy == request.auth.uid
         && tenderIdentityUnchanged()
@@ -224,11 +268,50 @@ service cloud.firestore {
         && resource.data.get('financialEvaluationStatus', 'not_started') in ['not_started', 'in_progress', 'revision_required']
         && request.resource.data.diff(resource.data).changedKeys().hasOnly([
           'financialEvaluationStatus', 'financialBidsOpenedBy', 'financialBidsOpenedAt',
+          'financialBidOpeningRecorded', 'financialBidOpeningActualAt', 'financialBidOpeningRecordedBy',
+          'financialBidOpeningRecordedAt', 'financialBidOpeningSource', 'financialBidOpeningBidCount',
+          'eProcFinancialOpeningReference',
           'financialBidOpeningRemarks', 'financialOpeningOverrideReason', 'financialTieAcknowledged',
           'financialEvaluationRevisionRemarks', 'updatedBy', 'updatedAt'
         ])
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.get('financialEvaluationApprovedBy', '') == resource.data.get('financialEvaluationApprovedBy', '');
+    }
+
+    function agencyTechnicalTenderUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'published'
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'technicalEvaluationStatus', 'technicalBidsOpenedBy', 'technicalBidsOpenedAt',
+          'technicalBidOpeningRecorded', 'technicalBidOpeningActualAt', 'technicalBidOpeningRecordedBy',
+          'technicalBidOpeningRecordedAt', 'technicalBidOpeningSource', 'technicalBidOpeningBidCount',
+          'technicalBidOpeningReceivedCount', 'eProcTechnicalOpeningReference',
+          'technicalBidOpeningRemarks', 'technicalOpeningOverrideReason',
+          'technicalEvaluationRemarks', 'noBidsReceived', 'noBidRemarks',
+          'updatedBy', 'updatedAt'
+        ])
+        && request.resource.data.get('technicalEvaluationStatus', 'not_started') in
+          ['not_started', 'in_progress', 'submitted_for_review', 'revision_required'];
+    }
+
+    function agencyCorrigendumTenderUpdateAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'published'
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'bidSubmissionEndDate', 'technicalBidOpeningDate', 'financialBidOpeningDate',
+          'updatedBy', 'updatedAt'
+        ]);
+    }
+
+    function agencyRetenderLinkAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'retender_required'
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'replacedByTenderId', 'retenderReason', 'updatedBy', 'updatedAt'
+        ]);
     }
 
     function financialBidIdentityUnchanged() {
@@ -262,7 +345,7 @@ service cloud.firestore {
 
     function agencyAwardWorkOrderStatusUpdateAllowed() {
       return assignedToAgency(resource.data.executingAgencyId)
-        && resource.data.status in ['approved', 'award_letter_issued', 'work_order_pending']
+        && resource.data.status in ['approved', 'awarded', 'award_letter_issued', 'work_order_pending']
         && request.resource.data.status in ['work_order_pending', 'work_order_issued']
         && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'updatedBy', 'updatedAt'])
         && request.resource.data.updatedBy == request.auth.uid;
@@ -281,6 +364,30 @@ service cloud.firestore {
         && resource.data.get('financialEvaluationStatus', 'not_started') == 'approved'
         && request.resource.data.get('awardStatus', 'not_started') == 'recommendation_pending'
         && request.resource.data.diff(resource.data).changedKeys().hasOnly(['awardStatus', 'updatedBy', 'updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function agencyAwardTenderFinalizationAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'published'
+        && resource.data.get('technicalEvaluationStatus', 'not_started') == 'approved'
+        && resource.data.get('financialEvaluationStatus', 'not_started') == 'approved'
+        && request.resource.data.get('awardStatus', '') == 'awarded'
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'awardStatus', 'selectedContractorId', 'selectedContractorName',
+          'tenderAwardId', 'updatedBy', 'updatedAt'
+        ])
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function agencyPackageAwardLinkAllowed() {
+      return assignedToAgency(resource.data.executingAgencyId)
+        && resource.data.status == 'tender_in_progress'
+        && request.resource.data.status == 'awarded'
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'status', 'contractorId', 'contractorName', 'tenderAwardId',
+          'finalContractValue', 'updatedBy', 'updatedAt'
+        ])
         && request.resource.data.updatedBy == request.auth.uid;
     }
 
@@ -329,7 +436,7 @@ service cloud.firestore {
         || (isActiveApprovedUser()
           && request.resource.data.performedBy == request.auth.uid
           && ((request.resource.data.entityType == 'workPackage'
-              && request.resource.data.action in ['work_package_created', 'work_package_updated', 'submitted_for_review', 'work_package_submitted']
+              && request.resource.data.action in ['work_package_created', 'work_package_updated', 'work_package_financial_breakdown_updated', 'submitted_for_review', 'work_package_submitted', 'work_package_sent_to_diet', 'work_package_diet_review_started', 'work_package_diet_revision_requested', 'work_package_diet_concurred', 'work_package_handshake_completed', 'work_package_submitted_to_scert', 'work_package_scert_review_started', 'work_package_scert_revision_required', 'approved_for_tender']
               && existsAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId))
               && getAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'contractor'
@@ -337,11 +444,11 @@ service cloud.firestore {
               && existsAfter(/databases/$(database)/documents/contractors/$(request.resource.data.entityId))
               && getAfter(/databases/$(database)/documents/contractors/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'scopeOfWork'
-              && request.resource.data.action in ['scope_created', 'scope_updated', 'scope_submitted']
+&& request.resource.data.action in ['scope_created', 'scope_updated', 'scope_submitted', 'scope_sent_to_agency', 'scope_agency_review_started', 'scope_revision_requested', 'scope_agency_accepted', 'scope_mutually_agreed','scope_sent_to_architecture','architecture_review_started','architecture_scope_revision_requested','diet_drawing_revision_requested','diet_architectural_drawings_accepted','architectural_drawings_submitted_to_scert','scert_drawing_review_started','scert_drawing_revision_required','scert_architectural_drawings_approved','scope_released_to_agency']
               && existsAfter(/databases/$(database)/documents/scopeOfWorks/$(request.resource.data.entityId))
               && getAfter(/databases/$(database)/documents/scopeOfWorks/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'tender'
-              && request.resource.data.action in ['tender_created', 'tender_updated', 'tender_submitted', 'tender_published']
+              && request.resource.data.action in ['tender_created', 'tender_updated', 'tender_submitted', 'tender_published', 'no_bids_received', 'record_technical_bid_opening', 'create_retender']
               && existsAfter(/databases/$(database)/documents/tenders/$(request.resource.data.entityId))
               && getAfter(/databases/$(database)/documents/tenders/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'workPackage'
@@ -349,9 +456,25 @@ service cloud.firestore {
               && existsAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId))
               && getAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'financial_evaluation'
-              && request.resource.data.action in ['financial_bids_opened', 'early_financial_opening_override', 'financial_bid_amount_entered', 'financial_amount_corrected', 'financial_ranking_recalculated', 'financial_evaluation_submitted'])
+              && request.resource.data.action in ['financial_bids_opened', 'early_financial_opening_override', 'record_financial_bid_opening', 'financial_bid_amount_entered', 'financial_amount_corrected', 'financial_ranking_recalculated', 'financial_evaluation_submitted'])
+            || (request.resource.data.entityType == 'technical_evaluation'
+              && request.resource.data.action in ['technical_bids_opened', 'technical_bids_opened_with_override', 'technical_evaluation_submitted', 'record_technical_evaluation', 'verify_technical_evaluation'])
+            || (request.resource.data.entityType == 'technical_criterion'
+              && request.resource.data.action == 'technical_criterion_created')
+            || (request.resource.data.entityType == 'tender_bid'
+              && request.resource.data.action in ['participating_bidder_recorded', 'bidder_withdrawn', 'bidder_qualified', 'bidder_disqualified'])
+            || (request.resource.data.entityType == 'tender_corrigendum'
+              && request.resource.data.action == 'record_corrigendum')
             || (request.resource.data.entityType == 'tender_award_recommendation'
               && request.resource.data.action in ['award_recommendation_created', 'award_recommendation_updated', 'award_recommendation_submitted'])
+            || (request.resource.data.entityType == 'tender_award'
+              && request.resource.data.action == 'tender_award_created'
+              && existsAfter(/databases/$(database)/documents/tenderAwards/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/tenderAwards/$(request.resource.data.entityId)).data.createdBy == request.auth.uid)
+            || (request.resource.data.entityType == 'workPackage'
+              && request.resource.data.action == 'contractor_linked_to_work_package'
+              && existsAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'work_order'
               && request.resource.data.action in ['work_order_created', 'work_order_updated', 'work_order_issued'])));
       allow update, delete: if false;
@@ -364,24 +487,22 @@ service cloud.firestore {
     }
 
     match /scopeOfWorks/{scopeId} {
-      allow read: if canReadExecutionRecord(resource.data);
-      allow create: if isScertAdmin()
-        || (assignedToDiet(request.resource.data.dietId)
+      allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||(isArchitectureUser()&&architectureScopeStatus(resource.data.status))||(assignedToAgency(resource.data.executingAgencyId)&&resource.data.status in ['released_to_executing_agency','mutually_agreed','approved']);
+      allow create: if assignedToDiet(request.resource.data.dietId)
           && request.resource.data.status == 'draft'
           && request.resource.data.preparedBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
           && request.resource.data.scopeCategories.size() > 0
           && request.resource.data.activityIds.size() > 0
           && exists(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId))
-          && get(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId)).data.status == 'active');
-      allow update: if isScertAdmin() || dietScopeUpdateAllowed();
+          && get(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId)).data.status == 'active';
+      allow update: if isScertAdmin() || dietScopeUpdateAllowed() || architectureScopeUpdateAllowed() || agencyScopeReviewAllowed();
       allow delete: if false;
     }
 
     match /workPackages/{packageId} {
       allow read: if canReadExecutionRecord(resource.data);
-      allow create: if isScertAdmin()
-        || (isActiveApprovedUser()
+      allow create: if isActiveApprovedUser()
           && request.resource.data.status == 'draft'
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
@@ -390,15 +511,45 @@ service cloud.firestore {
           && hasValidActiveAssignment(request.resource.data)
           && hasValidScope(request.resource.data)
           && packageActivitiesWithinScope(request.resource.data)
-          && (assignedToDiet(request.resource.data.dietId)
-            || assignedToAgency(request.resource.data.executingAgencyId)));
+          && assignedToAgency(request.resource.data.executingAgencyId);
       allow update: if isScertAdmin()
-        || ((assignedToDiet(resource.data.dietId)
-            || assignedToAgency(resource.data.executingAgencyId))
-          && permittedDraftPackageUpdate())
+        || agencyPackageWorkflowAllowed()
+        || dietPackageReviewAllowed()
         || agencyPublishedPackageUpdateAllowed()
-        || agencyPackageWorkOrderLinkAllowed();
+        || agencyPackageWorkOrderLinkAllowed()
+        || agencyPackageAwardLinkAllowed();
       allow delete: if false;
+    }
+
+    match /dietActivityFinancials/{financialId} {
+      allow read: if canReadActivityFinancial(resource.data);
+      allow create, update: if isScertAdmin()
+        && request.resource.data.originalApprovedAmount >= 0
+        && request.resource.data.currentEffectiveApprovedAmount >= 0
+        && request.resource.data.principalAllocation >= 0
+        && request.resource.data.agencyAllocation >= 0
+        && request.resource.data.totalAllocatedAmount == request.resource.data.principalAllocation + request.resource.data.agencyAllocation
+        && request.resource.data.totalAllocatedAmount <= request.resource.data.currentEffectiveApprovedAmount
+        && request.resource.data.unallocatedApprovedAmount == request.resource.data.currentEffectiveApprovedAmount - request.resource.data.totalAllocatedAmount
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /drawingPackages/{drawingId}{
+      allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||isArchitectureUser()||assignedToAgency(resource.data.executingAgencyId);
+      allow create: if isArchitectureUser()&&request.resource.data.drawingDiscipline=='architectural'&&request.resource.data.issuedBy==request.auth.uid;
+      allow update: if isArchitectureUser()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']);
+      allow delete: if false;
+    }
+    match /communications/{communicationId}{
+      allow read: if isScertAdmin()||resource.data.fromUserId==request.auth.uid||resource.data.toUserId==request.auth.uid||role()==resource.data.toRole;
+      allow create: if isActiveApprovedUser()&&request.resource.data.fromUserId==request.auth.uid&&request.resource.data.attachmentIds is list;
+      allow update,delete: if false;
+    }
+    match /documentAttachments/{attachmentId}{
+      allow read: if isActiveApprovedUser();
+      allow create: if isActiveApprovedUser()&&request.resource.data.uploadedBy==request.auth.uid&&request.resource.data.mimeType=='application/pdf'&&request.resource.data.size<=15728640;
+      allow update,delete: if false;
     }
 
     match /tenders/{tenderId} {
@@ -412,14 +563,65 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId)).data.status == 'approved_for_tender'
           && get(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId)).data.dietId == request.resource.data.dietId
           && get(/databases/$(database)/documents/workPackages/$(request.resource.data.workPackageId)).data.executingAgencyId == request.resource.data.executingAgencyId
-          && hasValidActiveAssignment(request.resource.data));
-      allow update: if isScertAdmin() || agencyTenderDraftUpdateAllowed() || agencyTenderPublicationAllowed() || agencyFinancialTenderUpdateAllowed() || agencyAwardTenderUpdateAllowed();
+          && hasValidActiveAssignment(request.resource.data))
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.status == 'draft'
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.get('retenderOfTenderId', '') != ''
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.retenderOfTenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.retenderOfTenderId)).data.status == 'retender_required'
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.retenderOfTenderId)).data.workPackageId == request.resource.data.workPackageId
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.retenderOfTenderId)).data.executingAgencyId == request.resource.data.executingAgencyId);
+      allow update: if isScertAdmin() || agencyTenderDraftUpdateAllowed() || agencyTenderPublicationAllowed() || agencyTechnicalTenderUpdateAllowed() || agencyCorrigendumTenderUpdateAllowed() || agencyRetenderLinkAllowed() || agencyFinancialTenderUpdateAllowed() || agencyAwardTenderUpdateAllowed() || agencyAwardTenderFinalizationAllowed();
       allow delete: if false;
     }
 
     match /tenderBids/{bidId} {
       allow read: if canReadExecutionRecord(resource.data);
-      allow write: if false;
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.bidSource == 'eproc_punjab'
+          && request.resource.data.recordedBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.status == 'published'
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.executingAgencyId == request.resource.data.executingAgencyId
+          && exists(/databases/$(database)/documents/contractors/$(request.resource.data.contractorId))
+          && get(/databases/$(database)/documents/contractors/$(request.resource.data.contractorId)).data.active == true
+          && get(/databases/$(database)/documents/contractors/$(request.resource.data.contractorId)).data.blacklisted == false);
+      allow update: if isScertAdmin()
+        || (assignedToAgency(resource.data.executingAgencyId)
+          && request.resource.data.tenderId == resource.data.tenderId
+          && request.resource.data.contractorId == resource.data.contractorId
+          && request.resource.data.executingAgencyId == resource.data.executingAgencyId
+          && request.resource.data.recordedBy == resource.data.recordedBy
+          && request.resource.data.updatedBy == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /tenderCorrigenda/{corrigendumId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.recordedBy == request.auth.uid
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.status == 'published'
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.executingAgencyId == request.resource.data.executingAgencyId);
+      allow update, delete: if false;
+    }
+
+    match /tenderTechnicalCriteria/{criterionId} {
+      allow read: if canReadExecutionRecord(resource.data);
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.executingAgencyId == request.resource.data.executingAgencyId
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.get('technicalBidsOpenedAt', null) == null);
+      allow update: if isScertAdmin();
+      allow delete: if false;
     }
 
     match /tenderFinancialBids/{financialBidId} {
@@ -472,7 +674,26 @@ service cloud.firestore {
 
     match /tenderAwards/{awardId} {
       allow read: if canReadExecutionRecord(resource.data);
-      allow create: if isScertAdmin();
+      allow create: if isScertAdmin()
+        || (assignedToAgency(request.resource.data.executingAgencyId)
+          && request.resource.data.status == 'awarded'
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.awardedBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.finalContractValue >= 0
+          && exists(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId))
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.status == 'published'
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.get('technicalEvaluationStatus', 'not_started') == 'approved'
+          && get(/databases/$(database)/documents/tenders/$(request.resource.data.tenderId)).data.get('financialEvaluationStatus', 'not_started') == 'approved'
+          && exists(/databases/$(database)/documents/tenderAwardRecommendations/$(request.resource.data.recommendationId))
+          && get(/databases/$(database)/documents/tenderAwardRecommendations/$(request.resource.data.recommendationId)).data.executingAgencyId == request.resource.data.executingAgencyId
+          && get(/databases/$(database)/documents/tenderAwardRecommendations/$(request.resource.data.recommendationId)).data.contractorId == request.resource.data.contractorId
+          && get(/databases/$(database)/documents/tenderAwardRecommendations/$(request.resource.data.recommendationId)).data.status in ['draft', 'revision_required', 'approved']
+          && (request.resource.data.isL1 == true
+            || get(/databases/$(database)/documents/tenderAwardRecommendations/$(request.resource.data.recommendationId)).data.get('nonL1Justification', '').size() > 0
+            || get(/databases/$(database)/documents/tenderAwardRecommendations/$(request.resource.data.recommendationId)).data.get('jointL1Justification', '').size() > 0)
+          && (request.resource.data.finalContractValue <= request.resource.data.tenderEstimatedValue
+            || request.resource.data.get('remarks', '').size() > 0));
       allow update: if isScertAdmin() || agencyAwardWorkOrderStatusUpdateAllowed();
       allow delete: if false;
     }
@@ -485,7 +706,7 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
           && exists(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId))
-          && get(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId)).data.status in ['approved', 'award_letter_issued', 'work_order_pending']
+          && get(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId)).data.status in ['approved', 'awarded', 'award_letter_issued', 'work_order_pending']
           && get(/databases/$(database)/documents/tenderAwards/$(request.resource.data.tenderAwardId)).data.finalContractValue == request.resource.data.contractValue);
       allow update: if isScertAdmin()
         || (assignedToAgency(resource.data.executingAgencyId)
