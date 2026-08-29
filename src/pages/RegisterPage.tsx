@@ -3,12 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { organisationRoleOptions } from "../constants/organisationRoles";
 import { punjabDistricts } from "../constants/punjabDistricts";
+import { architectureZones, type ArchitectureZone } from "../constants/architectureZones";
 import { registerPendingUser } from "../services/registrationService";
 import type { OrganisationRole } from "../types";
 
 const initialStepOne = {
   organisationRole: "" as OrganisationRole | "",
   districtId: "",
+  architectureZone: "" as ArchitectureZone | "",
 };
 
 const initialDetails = {
@@ -46,11 +48,15 @@ export function RegisterPage() {
     () => punjabDistricts.find((district) => district.id === stepOne.districtId),
     [stepOne.districtId],
   );
+  const isArchitecture = stepOne.organisationRole === "architecture_department";
+  const selectedZone = architectureZones.find((zone) => zone.value === stepOne.architectureZone);
 
   function validateStepOne() {
     const nextErrors: Record<string, string> = {};
     if (!stepOne.organisationRole) nextErrors.organisationRole = "Organisation / role is required.";
-    if (!stepOne.districtId) nextErrors.districtId = "District is required.";
+    if (stepOne.organisationRole === "architecture_department") {
+      if (!stepOne.architectureZone) nextErrors.architectureZone = "Architecture Zone is required.";
+    } else if (!stepOne.districtId) nextErrors.districtId = "District is required.";
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
@@ -60,7 +66,7 @@ export function RegisterPage() {
     if (!details.organisationName.trim()) nextErrors.organisationName = "Organisation or DIET name is required.";
     if (!details.contactPersonName.trim()) nextErrors.contactPersonName = "Contact person name is required.";
     if (!details.designation.trim()) nextErrors.designation = "Designation is required.";
-    if (!stepOne.districtId) nextErrors.districtId = "District is required.";
+    if (isArchitecture ? !stepOne.architectureZone : !stepOne.districtId) nextErrors[isArchitecture ? "architectureZone" : "districtId"] = `${isArchitecture ? "Architecture Zone" : "District"} is required.`;
     if (!/^\d{10}$/.test(details.mobile.trim())) nextErrors.mobile = "Mobile number must contain exactly 10 digits.";
     if (!validEmail(details.email.trim())) nextErrors.email = "Enter a valid email address.";
     if (details.password.length < 8) nextErrors.password = "Password must contain at least 8 characters.";
@@ -88,6 +94,7 @@ export function RegisterPage() {
       const pendingSummary = await registerPendingUser({
         organisationRole: stepOne.organisationRole,
         districtId: stepOne.districtId,
+        architectureZone: stepOne.architectureZone || undefined,
         organisationName: details.organisationName.trim(),
         contactPersonName: details.contactPersonName.trim(),
         designation: details.designation.trim(),
@@ -108,7 +115,7 @@ export function RegisterPage() {
     }
   }
 
-  const nameLabel = stepOne.organisationRole === "diet" ? "DIET Name" : "Agency / Division Name";
+  const nameLabel = isArchitecture ? "Architecture Office / Zone Office Name" : stepOne.organisationRole === "diet" ? "DIET Name" : "Agency / Division Name";
 
   return (
     <main className="login-screen">
@@ -129,7 +136,7 @@ export function RegisterPage() {
           <form className="login-form" onSubmit={handleContinue} noValidate>
             <label>
               Select Organisation / Role *
-              <select value={stepOne.organisationRole} onChange={(event) => setStepOne({ ...stepOne, organisationRole: event.target.value as OrganisationRole })}>
+              <select value={stepOne.organisationRole} onChange={(event) => setStepOne({ ...stepOne, organisationRole: event.target.value as OrganisationRole, districtId: "", architectureZone: "" })}>
                 <option value="">Select organisation / role</option>
                 {organisationRoleOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -139,7 +146,12 @@ export function RegisterPage() {
               </select>
               {errors.organisationRole ? <span className="field-error">{errors.organisationRole}</span> : null}
             </label>
-            <label>
+            {isArchitecture ? <label>
+              Architecture Zone *
+              <select value={stepOne.architectureZone} onChange={(event) => setStepOne({ ...stepOne, architectureZone: event.target.value as ArchitectureZone })}>
+                <option value="">Select architecture zone</option>{architectureZones.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}
+              </select>{errors.architectureZone ? <span className="field-error">{errors.architectureZone}</span> : null}
+            </label> : <label>
               District *
               <select value={stepOne.districtId} onChange={(event) => setStepOne({ ...stepOne, districtId: event.target.value })}>
                 <option value="">Select district</option>
@@ -150,7 +162,7 @@ export function RegisterPage() {
                 ))}
               </select>
               {errors.districtId ? <span className="field-error">{errors.districtId}</span> : null}
-            </label>
+            </label>}
             <button className="primary-button" type="submit">Continue</button>
             <Link to="/login" className="text-link">Already registered? Return to login</Link>
           </form>
@@ -165,13 +177,13 @@ export function RegisterPage() {
               Organisation Type
               <input value={selectedRole?.label || ""} readOnly />
             </label>
-            <label>
+            {isArchitecture ? <label>Architecture Zone *<select value={stepOne.architectureZone} onChange={(event) => setStepOne({ ...stepOne, architectureZone: event.target.value as ArchitectureZone })}>{architectureZones.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select>{errors.architectureZone ? <span className="field-error">{errors.architectureZone}</span> : null}</label> : <label>
               District *
               <select value={stepOne.districtId} onChange={(event) => setStepOne({ ...stepOne, districtId: event.target.value })}>
                 {punjabDistricts.map((district) => <option key={district.id} value={district.id}>{district.name}</option>)}
               </select>
               {errors.districtId ? <span className="field-error">{errors.districtId}</span> : null}
-            </label>
+            </label>}
             <label>
               Contact Person Name *
               <input value={details.contactPersonName} onChange={(event) => setDetails({ ...details, contactPersonName: event.target.value })} />
@@ -226,7 +238,7 @@ export function RegisterPage() {
                 {submitting ? "Submitting..." : "Submit Registration"}
               </button>
             </div>
-            <div className="agency-form-wide muted-text">Selected district: {selectedDistrict?.name}</div>
+            <div className="agency-form-wide muted-text">Selected {isArchitecture ? "architecture zone" : "district"}: {isArchitecture ? selectedZone?.label : selectedDistrict?.name}</div>
           </form>
         )}
       </section>

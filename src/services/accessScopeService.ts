@@ -38,7 +38,7 @@ export async function getUserAccessScope(profile: AppUser): Promise<AccessScope>
       districtIds: unique(relevant.map((item) => item.districtId)),
     };
   }
-  if(role==="architecture_user")return{accessType:"architecture",dietIds:[],agencyIds:[],districtIds:[]};
+  if(role==="architecture_user")return{accessType:"architecture",dietIds:assignedDietIds(profile),agencyIds:[],districtIds:[]};
 
   return { accessType: "none", dietIds: [], agencyIds: [], districtIds: [] };
 }
@@ -79,6 +79,7 @@ export async function getAccessibleAssignments(scope: AccessScope): Promise<Diet
 export async function getAccessibleScopes(scope: AccessScope): Promise<ScopeOfWork[]> {
   if (scope.accessType === "global") return getScopeOfWorks();
   if (scope.accessType === "diet") return dedupe(await Promise.all((scope.dietIds || []).map(getScopesForDiet)));
+  if (scope.accessType === "architecture") return dedupe(await Promise.all((scope.dietIds || []).map(getScopesForDiet)));
   if (scope.accessType === "agency") return dedupe(await Promise.all((scope.agencyIds || []).map(getScopesForAgency)));
   return [];
 }

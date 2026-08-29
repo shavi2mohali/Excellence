@@ -17,7 +17,7 @@ export function ProtectedRoute() {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  const requiresAssignment = ["diet", "pwd", "rdp"].includes(profile.organisationRole ?? "");
+  const requiresAssignment = ["diet", "pwd", "rdp", "architecture_department"].includes(profile.organisationRole ?? "");
   if (requiresAssignment && profile.assignmentStatus !== "assigned" && location.pathname !== "/assignment-pending") {
     return <Navigate to="/assignment-pending" replace />;
   }

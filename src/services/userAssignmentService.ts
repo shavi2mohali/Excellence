@@ -27,7 +27,7 @@ export async function getApprovedAssignableUsers(): Promise<AppUser[]> {
   const snapshot = await getDocs(query(collection(firestore, "users"), where("approvalStatus", "==", "approved")));
   return snapshot.docs
     .map((item) => normaliseAssignmentProfile({ uid: item.id, ...item.data() } as AppUser))
-    .filter((user) => ["diet", "pwd", "rdp"].includes(user.organisationRole ?? ""));
+    .filter((user) => ["diet", "pwd", "rdp", "architecture_department"].includes(user.organisationRole ?? ""));
 }
 
 export async function getAssignableDiets(): Promise<Diet[]> {
@@ -109,6 +109,23 @@ export const assignUserToDiet = (user: AppUser, diet: Diet, remarks: string) => 
 export const assignUserToAgency = (user: AppUser, agency: Agency, remarks: string) => assign(user, { agency, remarks });
 export const reassignUser = (user: AppUser, target: Target) => assign(user, target);
 
+export async function assignArchitectureUserToDiets(user: AppUser, diets: Diet[], remarks: string) {
+  const { firestore, adminUid } = requireAdmin();
+  if (user.organisationRole !== "architecture_department" || user.approvalStatus !== "approved" || user.active !== true) throw new Error("Only an active, approved Architecture user can be assigned.");
+  if (!diets.length) throw new Error("Select at least one DIET.");
+  const userRef = doc(firestore, "users", user.uid), historyRef = doc(collection(firestore, "userAssignments")), auditRef = doc(collection(firestore, "auditLogs"));
+  await runTransaction(firestore, async transaction => {
+    const snap = await transaction.get(userRef); if (!snap.exists()) throw new Error("User profile no longer exists.");
+    const current = normaliseAssignmentProfile({ uid: user.uid, ...snap.data() } as AppUser);
+    const histories = await getDocs(query(collection(firestore, "userAssignments"), where("userId", "==", user.uid), where("active", "==", true)));
+    histories.docs.forEach(item => transaction.update(item.ref, { active: false, endedBy: adminUid, endedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    const ids = diets.map(diet => diet.id), names = diets.map(diet => diet.name), reassignment = current.assignmentStatus === "assigned";
+    transaction.update(userRef, { assignedDietIds: ids, primaryDietId: ids[0] ?? null, assignedAgencyIds: [], primaryAgencyId: null, assignmentStatus: "assigned", assignedBy: adminUid, assignedAt: serverTimestamp(), assignmentRemarks: remarks.trim(), updatedAt: serverTimestamp() });
+    transaction.set(historyRef, { id: historyRef.id, userId: user.uid, userEmail: user.email, organisationRole: user.organisationRole, systemRole: "architecture_user", assignmentType: reassignment ? "reassignment" : "architecture_diet_assignment", architectureZone: user.architectureZone ?? null, assignedDietIds: ids, assignedDietNames: names, dietId: ids[0] ?? null, dietName: names[0] ?? null, agencyId: null, agencyName: null, previousDietId: current.primaryDietId ?? null, previousAgencyId: null, status: "assigned", remarks: remarks.trim(), assignedBy: adminUid, assignedAt: serverTimestamp(), endedBy: null, endedAt: null, active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    transaction.set(auditRef, { entityType: "user_assignment", entityId: user.uid, action: reassignment ? "reassignment" : "architecture_diet_assignment", performedBy: adminUid, performedAt: serverTimestamp(), previousData: { assignedDietIds: current.assignedDietIds ?? [] }, newData: { assignedDietIds: ids, assignmentStatus: "assigned" }, remarks: remarks.trim() });
+  });
+}
+
 export async function deactivateUserAssignment(user: AppUser, remarks: string) {
   if (!remarks.trim()) throw new Error("A deactivation reason is required.");
   const { firestore, adminUid } = requireAdmin();
@@ -118,7 +135,7 @@ export async function deactivateUserAssignment(user: AppUser, remarks: string) {
     histories.docs.forEach((history) => transaction.update(history.ref, {
       active: false, endedBy: adminUid, endedAt: serverTimestamp(), updatedAt: serverTimestamp(),
     }));
-    const dietUser = user.organisationRole === "diet";
+    const dietUser = user.organisationRole === "diet" || user.organisationRole === "architecture_department";
     transaction.update(doc(firestore, "users", user.uid), {
       assignmentStatus: "inactive", ...(dietUser ? { primaryDietId: null, assignedDietIds: [] } : { primaryAgencyId: null, assignedAgencyIds: [] }),
       assignmentRemarks: remarks.trim(), updatedAt: serverTimestamp(),

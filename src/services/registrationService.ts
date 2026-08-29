@@ -3,13 +3,15 @@ import { deleteApp, initializeApp } from "firebase/app";
 import { doc, getFirestore, serverTimestamp, writeBatch } from "firebase/firestore";
 import { getOrganisationRoleLabel, getRequestedSystemRole } from "../constants/organisationRoles";
 import { getDistrictName } from "../constants/punjabDistricts";
+import { getArchitectureZoneLabel, type ArchitectureZone } from "../constants/architectureZones";
 import { auth, db, getFirebaseConfigurationMessage, isFirebaseConfigured } from "../lib/firebase";
 import type { OrganisationRole } from "../types";
 
 export type RegistrationFormInput = {
   organisationRole: OrganisationRole;
   organisationName: string;
-  districtId: string;
+  districtId?: string;
+  architectureZone?: ArchitectureZone;
   contactPersonName: string;
   designation: string;
   mobile: string;
@@ -76,7 +78,11 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     throw new Error("A registration or user account with this email already exists.");
   }
 
-  const districtName = getDistrictName(input.districtId);
+  const isArchitecture = input.organisationRole === "architecture_department";
+  if (isArchitecture && !getArchitectureZoneLabel(input.architectureZone)) throw new Error("Select a valid Architecture Zone.");
+  if (!isArchitecture && !input.districtId) throw new Error("District is required.");
+  const districtName = isArchitecture ? "" : getDistrictName(input.districtId || "");
+  const architectureZoneLabel = isArchitecture ? getArchitectureZoneLabel(input.architectureZone) : "";
   const organisationRoleLabel = getOrganisationRoleLabel(input.organisationRole);
   const requestedSystemRole = getRequestedSystemRole(input.organisationRole);
   let credential;
@@ -104,8 +110,10 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     organisationRole: input.organisationRole,
     organisationRoleLabel,
     organisationName: input.organisationName,
-    districtId: input.districtId,
+    districtId: isArchitecture ? "" : input.districtId,
     districtName,
+    architectureZone: isArchitecture ? input.architectureZone : null,
+    architectureZoneLabel,
     officeAddress: input.officeAddress,
     officeTelephone: input.officeTelephone || "",
     divisionName: input.divisionName || "",
@@ -133,8 +141,10 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     organisationRole: input.organisationRole,
     organisationRoleLabel,
     organisationName: input.organisationName,
-    districtId: input.districtId,
+    districtId: isArchitecture ? "" : input.districtId,
     districtName,
+    architectureZone: isArchitecture ? input.architectureZone : null,
+    architectureZoneLabel,
     contactPersonName: input.contactPersonName,
     designation: input.designation,
     mobile: input.mobile,
@@ -160,6 +170,7 @@ export async function registerPendingUser(input: RegistrationFormInput) {
       organisationName: input.organisationName,
       organisationRoleLabel,
       districtName,
+      architectureZoneLabel,
       status: "pending",
     };
   } catch (error) {

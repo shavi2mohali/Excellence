@@ -4,6 +4,7 @@ type PendingSummary = {
   organisationName?: string;
   organisationRoleLabel?: string;
   districtName?: string;
+  architectureZoneLabel?: string;
   status?: string;
 };
 
@@ -20,7 +21,7 @@ export function RegistrationPendingPage() {
         <div className="pending-summary">
           <div><span>Organisation</span><strong>{summary.organisationName || "Submitted organisation"}</strong></div>
           <div><span>Selected role</span><strong>{summary.organisationRoleLabel || "Registration role"}</strong></div>
-          <div><span>Selected district</span><strong>{summary.districtName || "Selected district"}</strong></div>
+          <div><span>{summary.architectureZoneLabel ? "Architecture Zone" : "Selected district"}</span><strong>{summary.architectureZoneLabel || summary.districtName || "Selected district"}</strong></div>
         </div>
         <span className="status-pill in_progress">Pending SCERT Approval</span>
         <p className="muted-text">

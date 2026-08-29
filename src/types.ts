@@ -11,10 +11,11 @@ export type UserRole =
 export type SystemRole = UserRole;
 
 export type OrganisationRole = "diet" | "pwd" | "rdp" | "architecture_department";
+import type { ArchitectureZone } from "./constants/architectureZones";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "suspended";
 export type AssignmentStatus = "unassigned" | "assigned" | "inactive";
-export type AssignmentType = "diet_assignment" | "agency_assignment" | "reassignment" | "deactivation";
+export type AssignmentType = "diet_assignment" | "agency_assignment" | "architecture_diet_assignment" | "reassignment" | "deactivation";
 
 export type DietStatus = "planning" | "in_progress" | "completed" | "delayed";
 
@@ -32,6 +33,8 @@ export type AppUser = {
   organisationName?: string;
   districtId?: string;
   districtName?: string;
+  architectureZone?: ArchitectureZone;
+  architectureZoneLabel?: string;
   officeAddress?: string;
   officeTelephone?: string;
   divisionName?: string;
@@ -75,6 +78,9 @@ export type UserAssignment = {
   assignmentType: AssignmentType;
   dietId: string | null;
   dietName: string | null;
+  assignedDietIds?: string[];
+  assignedDietNames?: string[];
+  architectureZone?: ArchitectureZone;
   agencyId: string | null;
   agencyName: string | null;
   previousDietId: string | null;
@@ -96,8 +102,10 @@ export type RegistrationRequest = {
   organisationRole: OrganisationRole;
   organisationRoleLabel: string;
   organisationName: string;
-  districtId: string;
-  districtName: string;
+  districtId?: string;
+  districtName?: string;
+  architectureZone?: ArchitectureZone;
+  architectureZoneLabel?: string;
   contactPersonName: string;
   designation: string;
   mobile: string;
@@ -195,8 +203,8 @@ export type DietAgencyAssignment = {
   assignmentOrderNumber: string;
   assignmentOrderDate: string;
   scopeSummary?: string;
-  effectiveFrom: string;
-  effectiveTo: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
   status: DietAgencyAssignmentStatus;
   remarks: string;
   supersedesAssignmentId?: string;

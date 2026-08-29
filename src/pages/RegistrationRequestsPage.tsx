@@ -81,7 +81,7 @@ export function RegistrationRequestsPage() {
 
   const filteredRequests = requests.filter((request) => {
     const term = search.trim().toLowerCase();
-    const haystack = `${request.contactPersonName} ${request.organisationName} ${request.email} ${request.mobile}`.toLowerCase();
+    const haystack = `${request.contactPersonName} ${request.organisationName} ${request.email} ${request.mobile} ${request.architectureZoneLabel ?? ""}`.toLowerCase();
     return (
       (statusFilter === "all" || request.status === statusFilter) &&
       (roleFilter === "all" || request.organisationRole === roleFilter) &&
@@ -97,7 +97,7 @@ export function RegistrationRequestsPage() {
           normaliseAgencyName(agency.name) === normaliseAgencyName(selectedRequest.organisationName),
       )
     : [];
-  const matchingDiets = selectedRequest ? diets.filter((diet) => diet.district.toLowerCase() === selectedRequest.districtName.toLowerCase()) : [];
+  const matchingDiets = selectedRequest?.districtName ? diets.filter((diet) => diet.district.toLowerCase() === selectedRequest.districtName!.toLowerCase()) : [];
 
   function openDialog(request: RegistrationRequest, mode: "view" | "approve" | "reject") {
     setSelectedRequest(request);
@@ -124,7 +124,7 @@ export function RegistrationRequestsPage() {
 
     try {
       let agencyId = assignedAgencyId;
-      if (createNewAgency && selectedRequest.organisationRole !== "diet" && !agencyId) {
+      if (createNewAgency && !["diet", "architecture_department"].includes(selectedRequest.organisationRole) && !agencyId) {
         const agencyPayload: AgencyInput = {
           name: selectedRequest.organisationName,
           type: agencyTypeForRequest(selectedRequest),
@@ -140,8 +140,8 @@ export function RegistrationRequestsPage() {
       await approveRegistration({
         request: selectedRequest,
         systemRole: selectedRole,
-        assignedDietIds: assignedDietId ? [assignedDietId] : [],
-        assignedAgencyIds: agencyId ? [agencyId] : [],
+        assignedDietIds: selectedRequest.organisationRole === "architecture_department" ? [] : assignedDietId ? [assignedDietId] : [],
+        assignedAgencyIds: selectedRequest.organisationRole === "architecture_department" ? [] : agencyId ? [agencyId] : [],
         remarks,
       });
       closeDialog();
@@ -192,7 +192,7 @@ export function RegistrationRequestsPage() {
       <section className="filters approval-filters">
         <label>Search<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, organisation, email, mobile" /></label>
         <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label>
-        <label>Organisation Type<select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All</option><option value="diet">DIET</option><option value="pwd">PWD</option><option value="rdp">RDP</option></select></label>
+        <label>Organisation Type<select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="all">All</option><option value="diet">DIET</option><option value="pwd">PWD</option><option value="rdp">RDP</option><option value="architecture_department">Architecture Department</option></select></label>
         <label>District<select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)}><option value="all">All districts</option>{punjabDistricts.map((district) => <option key={district.id} value={district.id}>{district.name}</option>)}</select></label>
       </section>
 
@@ -207,7 +207,7 @@ export function RegistrationRequestsPage() {
                   <td>{request.contactPersonName}</td>
                   <td>{request.organisationName}</td>
                   <td>{request.organisationRoleLabel}</td>
-                  <td>{request.districtName}</td>
+                  <td>{request.architectureZoneLabel ?? request.districtName ?? "—"}</td>
                   <td>{request.designation}</td>
                   <td>{request.mobile}</td>
                   <td>{request.email}</td>
@@ -237,13 +237,13 @@ export function RegistrationRequestsPage() {
             <div><span>Applicant</span><strong>{selectedRequest.contactPersonName}</strong></div>
             <div><span>Organisation</span><strong>{selectedRequest.organisationName}</strong></div>
             <div><span>Type</span><strong>{selectedRequest.organisationRoleLabel}</strong></div>
-            <div><span>District</span><strong>{selectedRequest.districtName}</strong></div>
+            <div><span>{selectedRequest.organisationRole === "architecture_department" ? "Zone" : "District"}</span><strong>{selectedRequest.architectureZoneLabel ?? selectedRequest.districtName ?? "—"}</strong></div>
           </div>
 
           {dialogMode === "approve" ? (
             <form className="agency-form review-form" onSubmit={handleApprove}>
               <label>Proposed system role<select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as SystemRole)}>{approvableRoles.map((role) => <option key={role} value={role}>{role.replaceAll("_", " ")}</option>)}</select></label>
-              {selectedRequest.organisationRole === "diet" ? (
+              {selectedRequest.organisationRole === "architecture_department" ? <div className="muted-text">Architecture users are approved as unassigned. Assign one or more DIETs from Approved User Assignments.</div> : selectedRequest.organisationRole === "diet" ? (
                 <label>Assigned DIET<select value={assignedDietId} onChange={(event) => setAssignedDietId(event.target.value)}><option value="">Approve first and assign later</option>{matchingDiets.map((diet) => <option key={diet.id} value={diet.id}>{diet.name}</option>)}</select></label>
               ) : (
                 <>

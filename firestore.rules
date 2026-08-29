@@ -44,14 +44,27 @@ service cloud.firestore {
         && request.resource.data.approvalStatus == 'pending'
         && request.resource.data.active == false
         && request.resource.data.isActive == false
-        && request.resource.data.approved == false;
+        && request.resource.data.approved == false
+        && ((request.resource.data.organisationRole == 'architecture_department'
+          && request.resource.data.architectureZone in ['north','south','east','west']
+          && request.resource.data.get('districtId','') == '')
+          || (request.resource.data.organisationRole in ['diet','pwd','rdp']
+            && request.resource.data.districtId is string
+            && request.resource.data.districtId.size() > 0));
     }
 
     function isOwnPendingRegistrationRequest(requestId) {
       return isSignedIn()
         && request.auth.uid == requestId
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        && ((request.resource.data.organisationRole == 'architecture_department'
+          && request.resource.data.requestedSystemRole == 'architecture_user'
+          && request.resource.data.architectureZone in ['north','south','east','west']
+          && request.resource.data.get('districtId','') == '')
+          || (request.resource.data.organisationRole in ['diet','pwd','rdp']
+            && request.resource.data.districtId is string
+            && request.resource.data.districtId.size() > 0));
     }
 
     function isViewer() {
@@ -82,6 +95,7 @@ service cloud.firestore {
         || assignedToAgency(data.executingAgencyId);
     }
     function isArchitectureUser(){return role()=='architecture_user';}
+    function assignedArchitectureDiet(dietId){return isArchitectureUser()&&currentUser().assignmentStatus=='assigned'&&dietId in currentUser().get('assignedDietIds',[]);}
     function architectureScopeStatus(status){return status in ['sent_to_architecture','architecture_review','architecture_revision_requested','architectural_drawings_issued','diet_drawing_review','drawing_revision_requested','diet_drawing_accepted','submitted_to_scert_for_drawing_approval','scert_drawing_review','scert_drawing_revision_required','architectural_drawings_approved'];}
 
     function canReadActivityFinancial(data) {
@@ -149,7 +163,7 @@ service cloud.firestore {
         && request.resource.data.get('approvedBy', '') == resource.data.get('approvedBy', '')
         && request.resource.data.get('approvedAt', null) == resource.data.get('approvedAt', null);
     }
-    function architectureScopeUpdateAllowed(){return isArchitectureUser()&&architectureScopeStatus(resource.data.status)&&request.resource.data.status in ['architecture_review','architecture_revision_requested','diet_drawing_review']&&scopeIdentityUnchanged()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','currentDrawingRevision','dietAcceptedDrawingRevision','scertApprovedDrawingRevision','reviewHistory','updatedBy','updatedAt']);}
+    function architectureScopeUpdateAllowed(){return assignedArchitectureDiet(resource.data.dietId)&&architectureScopeStatus(resource.data.status)&&request.resource.data.status in ['architecture_review','architecture_revision_requested','diet_drawing_review']&&scopeIdentityUnchanged()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','currentDrawingRevision','dietAcceptedDrawingRevision','scertApprovedDrawingRevision','reviewHistory','updatedBy','updatedAt']);}
 
     function agencyScopeReviewAllowed() {
       return assignedToAgency(resource.data.executingAgencyId)
@@ -425,7 +439,8 @@ service cloud.firestore {
 
     match /userAssignments/{assignmentId} {
       allow read: if isScertAdmin()
-        || (isActiveApprovedUser() && resource.data.userId == request.auth.uid);
+        || (isActiveApprovedUser() && resource.data.userId == request.auth.uid)
+        || (role() == 'diet_nodal_officer' && resource.data.systemRole == 'architecture_user' && resource.data.active == true && resource.data.get('assignedDietIds', []).hasAny(currentUser().get('assignedDietIds', [])));
       allow create, update: if isScertAdmin();
       allow delete: if false;
     }
@@ -487,7 +502,7 @@ service cloud.firestore {
     }
 
     match /scopeOfWorks/{scopeId} {
-      allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||(isArchitectureUser()&&architectureScopeStatus(resource.data.status))||(assignedToAgency(resource.data.executingAgencyId)&&resource.data.status in ['released_to_executing_agency','mutually_agreed','approved']);
+      allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||(assignedArchitectureDiet(resource.data.dietId)&&architectureScopeStatus(resource.data.status))||(assignedToAgency(resource.data.executingAgencyId)&&resource.data.status in ['released_to_executing_agency','mutually_agreed','approved']);
       allow create: if assignedToDiet(request.resource.data.dietId)
           && request.resource.data.status == 'draft'
           && request.resource.data.preparedBy == request.auth.uid

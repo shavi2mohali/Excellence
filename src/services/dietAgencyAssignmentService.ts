@@ -129,7 +129,7 @@ function assignmentData(input: DietAgencyAssignmentInput) {
     districtId: input.diet.districtId || "", districtName: input.diet.districtName || input.diet.district || "",
     scopeCategories: input.scopeCategories || [], assignmentOrderNumber: input.assignmentOrderNumber?.trim() || "",
     assignmentOrderDate: input.assignmentOrderDate || "", scopeSummary: input.scopeSummary?.trim() || "",
-    effectiveFrom: input.effectiveFrom || "", effectiveTo: input.effectiveTo || "", remarks: input.remarks?.trim() || "",
+    remarks: input.remarks?.trim() || "",
   };
 }
 

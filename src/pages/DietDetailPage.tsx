@@ -15,7 +15,7 @@ import { formatIndianCurrency } from "../utils/currency";
 import { getPackageFinancialBasis } from "../utils/fundingCalculations";
 import type { Agency, Diet, DietAgencyAssignment, Phase, ScopeOfWork, WorkPackage } from "../types";
 
-const emptyForm = { agencyId: "", assignmentOrderNumber: "", assignmentOrderDate: "", effectiveFrom: "", effectiveTo: "", remarks: "" };
+const emptyForm = { agencyId: "", assignmentOrderNumber: "", assignmentOrderDate: "", remarks: "" };
 
 export function DietDetailPage() {
   const { dietId = "" } = useParams(), { profile, accessScope } = useAuth();
@@ -39,7 +39,7 @@ export function DietDetailPage() {
 
   function openEdit(item?: DietAgencyAssignment) {
     setEditing(item || null); setSuperseding(null); setFormOpen(true); setError("");
-    setForm(item ? { agencyId: item.executingAgencyId, assignmentOrderNumber: item.assignmentOrderNumber || "", assignmentOrderDate: item.assignmentOrderDate || "", effectiveFrom: item.effectiveFrom || "", effectiveTo: item.effectiveTo || "", remarks: item.remarks || "" } : emptyForm);
+    setForm(item ? { agencyId: item.executingAgencyId, assignmentOrderNumber: item.assignmentOrderNumber || "", assignmentOrderDate: item.assignmentOrderDate || "", remarks: item.remarks || "" } : emptyForm);
   }
   function openSupersede(item: DietAgencyAssignment) { setSuperseding(item); setEditing(null); setFormOpen(true); setForm(emptyForm); setEffectiveDate(""); setReason(""); }
   async function save(event: FormEvent) {
@@ -59,7 +59,7 @@ export function DietDetailPage() {
     {formOpen && canManage && <section className="section-band"><div className="section-title"><h2>{superseding ? "Supersede Assignment" : editing ? "Edit Draft Assignment" : "Assign Executing Agency"}</h2><button className="secondary-button" onClick={() => setFormOpen(false)}><X size={16}/>Close</button></div><form className="agency-form" onSubmit={save}>
       <label>DIET<input value={diet?.name || ""} readOnly/></label><label>Project Phase<input value={phaseName} readOnly/></label>
       <label>Executing Agency *<select value={form.agencyId} disabled={Boolean(editing)} onChange={(e) => setForm({ ...form, agencyId: e.target.value })}><option value="">Select active executing agency</option>{eligibleAgencies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label>Assignment Order Number<input value={form.assignmentOrderNumber} onChange={(e) => setForm({ ...form, assignmentOrderNumber: e.target.value })}/></label><label>Assignment Order Date<input type="date" value={form.assignmentOrderDate} onChange={(e) => setForm({ ...form, assignmentOrderDate: e.target.value })}/></label><label>Effective From<input type="date" value={form.effectiveFrom} onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })}/></label><label>Effective To<input type="date" value={form.effectiveTo} onChange={(e) => setForm({ ...form, effectiveTo: e.target.value })}/></label>
+      <label>Assignment Order Number<input value={form.assignmentOrderNumber} onChange={(e) => setForm({ ...form, assignmentOrderNumber: e.target.value })}/></label><label>Assignment Order Date<input type="date" value={form.assignmentOrderDate} onChange={(e) => setForm({ ...form, assignmentOrderDate: e.target.value })}/></label>
       {superseding && <><label>Replacement Effective Date *<input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)}/></label><label>Reason *<input value={reason} onChange={(e) => setReason(e.target.value)}/></label></>}
       <label className="agency-form-wide">Remarks<textarea rows={2} value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })}/></label><div className="form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving..." : superseding ? "Supersede and Create Draft" : editing ? "Update Draft" : "Create Draft Assignment"}</button></div>
     </form></section>}
