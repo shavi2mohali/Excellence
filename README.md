@@ -192,6 +192,54 @@ npm run create:demo-admin
 
 ## Project Execution Flow
 
+The lifecycle is phase-aware. Phase behavior follows the phase sequence stored with the DIET and financial records; it is never inferred from a DIET name.
+
+### Phase I / II — historical financial execution
+
+PAB approval was completed historically. PMIS begins with canonical Activity Master-linked approved financial data. Scope, Architecture, proposal preparation, and a new PAB workflow are not prerequisites.
+
+```text
+Historical PAB Approval
+↓
+Activity Approved Amount
+↓
+Principal / Agency Allocation
+↓
+Financial Transactions
+↓
+Work Package where applicable
+↓
+Expenditure / UC / Spillover
+```
+
+The application currently records the approved amount, Principal/Agency allocations, independent release/transfer/expenditure transactions, and agency-funded Work Package commitments. UC and spillover calculations remain future work.
+
+### Phase III onward — full pre-PAB development
+
+Direct manual approved-amount entry is blocked. Approved activity financials must eventually originate from the future PAB decision workflow.
+
+```text
+Scope
+↓
+Architecture
+↓
+Technical Proposal
+↓
+SCERT State Proposal
+↓
+DoSE&L / PAB
+↓
+PAB Approval
+↓
+Activity Financials
+↓
+Work Package
+↓
+Execution / Finance
+```
+
+The centralized phase-capability model reserves Scope, Architecture, proposal, and PAB prerequisites for Phase III and later. This change does not implement the future proposal or PAB workflow.
+
 ```text
 SCERT
   ↓
@@ -212,9 +260,9 @@ Contractor (future phase)
 
 An executing agency is the government or public organisation responsible for executing or procuring work; it is distinct from a private contractor selected later through tendering. A DIET may have multiple executing-agency assignments for different scopes, and each agency may manage multiple work packages. The authoritative relationship is stored in `dietAgencyAssignments`, preserving assignment history rather than overwriting it.
 
-SCERT assigns the executing agency to a DIET without defining the work scope. The DIET nodal officer prepares a separate Scope of Work from Activity Master records, submits it for SCERT review, and creates linked work packages. Executing-agency users may contribute to assigned draft work, while SCERT retains review and approval authority.
+SCERT assigns the executing agency to a DIET without defining the work scope. For Phase I/II, Work Packages may be recorded directly against approved agency-funded activities because the historical PAB process is already complete. For Phase III onward, the DIET nodal officer uses the pre-PAB Scope and Architecture lifecycle before financially active Work Packages are created. Executing-agency users may contribute to assigned draft work, while SCERT retains review and approval authority.
 
-Work packages group activities from their linked scope. Funding defaults to Centre 60% and State 40%. The current financial basis is Technical Sanction when present, otherwise Administrative Approval when present, otherwise Estimated Cost. These amounts remain distinct. `approved_for_tender` means the package is ready for a future procurement phase; it does not create a tender or select a contractor.
+Work packages group approved activities. Phase I/II historical packages do not require Scope, Architecture, or a new PAB workflow record; Phase III+ native packages require the pre-PAB lifecycle. Funding defaults to Centre 60% and State 40%. The current financial basis is Technical Sanction when present, otherwise Administrative Approval when present, otherwise Estimated Cost. These amounts remain distinct. `approved_for_tender` means the package is ready for procurement; it does not itself create a tender or select a contractor.
 
 ## Private Contractors
 

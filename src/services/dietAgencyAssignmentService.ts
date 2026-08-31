@@ -2,6 +2,7 @@ import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updat
 import { auth, db, getFirebaseConfigurationMessage } from "../lib/firebase";
 import { getDietById } from "../lib/firestore";
 import type { Agency, Diet, DietAgencyAssignment, ScopeCategory, WorkPackage } from "../types";
+import { getPhaseSequence } from "../constants/projectPhases";
 
 export type DietAgencyAssignmentInput = {
   diet: Diet;
@@ -124,7 +125,7 @@ function validateInput(input: DietAgencyAssignmentInput) {
 function assignmentData(input: DietAgencyAssignmentInput) {
   return {
     dietId: input.diet.id, dietName: input.diet.name, phaseId: input.diet.phaseId || "",
-    phaseName: input.phaseName || input.diet.phaseYear || "", executingAgencyId: input.agency.id,
+    phaseName: input.phaseName || input.diet.phaseYear || "", phaseSequence: getPhaseSequence(input.diet), executingAgencyId: input.agency.id,
     executingAgencyName: input.agency.name, executingAgencyType: input.agency.agencyType || input.agency.type || "",
     districtId: input.diet.districtId || "", districtName: input.diet.districtName || input.diet.district || "",
     scopeCategories: input.scopeCategories || [], assignmentOrderNumber: input.assignmentOrderNumber?.trim() || "",

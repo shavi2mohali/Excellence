@@ -18,6 +18,7 @@ export type AssignmentStatus = "unassigned" | "assigned" | "inactive";
 export type AssignmentType = "diet_assignment" | "agency_assignment" | "architecture_diet_assignment" | "reassignment" | "deactivation";
 
 export type DietStatus = "planning" | "in_progress" | "completed" | "delayed";
+export type CoEPhase = "phase_1" | "phase_2" | "phase_3" | `phase_${number}`;
 
 export type AppUser = {
   uid: string;
@@ -123,6 +124,8 @@ export type Phase = {
   name: string;
   year: string;
   order: number;
+  phaseSequence?: number;
+  canonicalPhaseId?: CoEPhase;
   active: boolean;
 };
 
@@ -136,6 +139,7 @@ export type Diet = {
   location?: string;
   active?: boolean;
   phaseId: string;
+  phaseSequence?: number;
   phaseName?: string;
   phaseYear: string;
   status: DietStatus;
@@ -170,15 +174,23 @@ export type ActivityMaster = {
 export type AllocationStatus = "unallocated" | "partially_allocated" | "fully_allocated" | "over_allocated";
 export type ActivityLinkStatus = "matched" | "unmatched";
 export interface DietActivityFinancial {
-  id:string; dietId:string; dietName:string; phaseId:string; phaseName:string; financialYear:string;
+  id:string; dietId:string; dietName:string; phaseId:string; phaseName:string; phaseSequence:number; financialYear:string;
   activityId?:string; activityCode?:string; activityName:string; activityLinkStatus:ActivityLinkStatus;
   approvedPhysical?:number|string; approvedUnitCost?:number; originalApprovedAmount:number;
   principalAllocation:number; agencyAllocation:number; totalAllocatedAmount:number; unallocatedApprovedAmount:number;
   currentEffectiveApprovedAmount:number; allocationStatus:AllocationStatus; approvalRemarks?:string;
-  sourceType:"excel_import"|"manual"; sourceReference?:string; approvalVersion:string;
+  sourceType:"excel_import"|"manual"|"pab_minutes"|"state_record"|"historical_import"|"manual_verified_entry"; sourceReference?:string; sourceDocumentId?:string; approvalVersion:string;
   legacyReleasedToAgency?:number; legacyReleasedToPrincipal?:number; legacyTotalReleased?:number; legacyInstallmentText?:string;
   executingAgencyIds:string[]; active:boolean; createdBy:string; createdAt?:unknown; updatedBy:string; updatedAt?:unknown;
   committedToWorkPackages?:number; availableForNewWorkPackages?:number;
+}
+
+export type ExecutionRoute = "principal" | "agency" | "mixed";
+export type FinancialTransactionType = "release_to_principal" | "release_to_agency" | "diet_to_agency_transfer" | "principal_expenditure" | "agency_expenditure" | "refund" | "adjustment";
+export interface FinancialTransaction {
+  id:string; dietId:string; dietName:string; phaseId:string; phaseSequence:number; activityId:string; activityCode?:string; activityName:string;
+  transactionType:FinancialTransactionType; amount:number; transactionDate:string; agencyId?:string; agencyName?:string;
+  referenceNumber?:string; referenceDate?:string; documentIds:string[]; remarks?:string; createdBy:string; createdAt?:unknown;
 }
 
 export type ScopeCategory =
@@ -193,6 +205,7 @@ export type DietAgencyAssignment = {
   dietId: string;
   dietName: string;
   phaseId: string;
+  phaseSequence?: number;
   phaseName: string;
   executingAgencyId: string;
   executingAgencyName: string;
@@ -252,6 +265,8 @@ export type WorkPackage = {
   districtId: string;
   districtName: string;
   phaseId: string;
+  phaseSequence?: number;
+  recordOrigin?: "historical" | "pmis_native";
   phaseName: string;
   dietAgencyAssignmentId: string;
   scopeOfWorkId?: string;

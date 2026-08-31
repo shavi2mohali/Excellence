@@ -14,6 +14,7 @@ import { labelWorkCategory, workCategoryOptions, workPackageStatusLabels } from 
 import { calculateFundingShare, getPackageFinancialBasis } from "../utils/fundingCalculations";
 import { formatIndianCurrency } from "../utils/currency";
 import type { ActivityMaster, Diet, DietAgencyAssignment, Phase, ScopeOfWork, WorkCategory, WorkPackage, WorkPackageActivityAllocation } from "../types";
+import { getPhaseCapabilities, getPhaseSequence } from "../constants/projectPhases";
 
 const emptyForm = { dietId: "", assignmentId: "", scopeId: "", packageTitle: "", packageDescription: "", workCategory: "" as WorkCategory | "", activityAmounts: {} as Record<string,string>, administrativeApprovalAmount: "", technicalSanctionAmount: "", remarks: "" };
 const unique = <T extends { id: string }>(items: T[]) => [...new Map(items.map((item) => [item.id, item])).values()];
@@ -55,7 +56,8 @@ export function WorkPackagesPage() {
   useEffect(()=>{if(!form.dietId){setAvailability([]);return;}getDietActivityFinancialAvailability(form.dietId,editing?.id).then(setAvailability).catch(e=>setError(e instanceof Error?e.message:"Unable to load activity financial availability."));},[form.dietId,editing?.id,packages]);
   const activeAssignments = assignments.filter((item) => item.status === "active" && (!form.dietId || item.dietId === form.dietId));
   const selectedAssignment = assignments.find((item) => item.id === form.assignmentId);
-  const selectedScope = scopes.find((item) => item.id === form.scopeId);
+  const selectedDiet=diets.find(item=>item.id===form.dietId),historicalMode=Boolean(selectedDiet&&getPhaseCapabilities(getPhaseSequence(selectedDiet)).historicalFinancialMode);
+  const selectedScope = scopes.find((item) => item.id === form.scopeId) || (historicalMode&&selectedAssignment?{id:"",scopeTitle:"Historical financial execution",status:"approved",dietId:selectedAssignment.dietId,executingAgencyId:selectedAssignment.executingAgencyId,activityIds:availability.map(x=>x.financial.activityId).filter(Boolean)} as ScopeOfWork:undefined);
   const estimatedCost=Object.values(form.activityAmounts).reduce((n,v)=>n+Number(v||0),0);
   const financialPreview = calculateFundingShare(getPackageFinancialBasis({ estimatedCost, administrativeApprovalAmount: Number(form.administrativeApprovalAmount || 0), technicalSanctionAmount: Number(form.technicalSanctionAmount || 0) }));
   const districts = [...new Set(packages.map((item) => item.districtName).filter(Boolean))].sort();
@@ -79,7 +81,7 @@ export function WorkPackagesPage() {
     if (!selectedAssignment) return setError("Select an active executing agency assignment.");
     if (!form.workCategory) return setError("Select a work category.");
     const activityAllocations=availability.filter(x=>Number(form.activityAmounts[x.financial.activityId||""]||0)>0).map(x=>({activityId:x.financial.activityId!,activityCode:x.financial.activityCode,activityName:x.financial.activityName,financialRecordId:x.financial.id,currentEffectiveApprovedAmount:x.financial.currentEffectiveApprovedAmount,principalAllocation:x.financial.principalAllocation,agencyAllocation:x.financial.agencyAllocation,packageAllocatedAmount:Number(form.activityAmounts[x.financial.activityId!]||0)} as WorkPackageActivityAllocation));
-    const input = { assignment: selectedAssignment, scope: selectedScope, packageTitle: form.packageTitle, packageDescription: form.packageDescription, workCategory: form.workCategory, activityAllocations, administrativeApprovalAmount: Number(form.administrativeApprovalAmount || 0), technicalSanctionAmount: Number(form.technicalSanctionAmount || 0), remarks: form.remarks };
+    const input = { assignment: selectedAssignment, scope: historicalMode ? undefined : selectedScope, packageTitle: form.packageTitle, packageDescription: form.packageDescription, workCategory: form.workCategory, activityAllocations, administrativeApprovalAmount: Number(form.administrativeApprovalAmount || 0), technicalSanctionAmount: Number(form.technicalSanctionAmount || 0), remarks: form.remarks };
     setSaving(true);
     try { editing ? await updateWorkPackage(editing.id, input) : await createWorkPackage(input); setFormOpen(false); setEditing(null); setForm(emptyForm); await load(); setNotice(editing ? "Work package updated." : "Work package created as draft."); }
     catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Unable to save work package."); }

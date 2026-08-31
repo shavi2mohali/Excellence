@@ -14,6 +14,7 @@ import { AgencyDetailPage } from "./pages/AgencyDetailPage";
 import { ActivityMasterPage } from "./pages/ActivityMasterPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { ActivityFinancialsPage } from "./pages/ActivityFinancialsPage";
+import { FinancialTransactionsPage } from "./pages/FinancialTransactionsPage";
 import { WorkPackagesPage } from "./pages/WorkPackagesPage";
 import { WorkPackageDetailPage } from "./pages/WorkPackageDetailPage";
 import { ContractorsPage } from "./pages/ContractorsPage";
@@ -46,6 +47,7 @@ const baseNavItems = [
 const adminNavItems = [
   { to: "/settings", label: "System", icon: Settings },
   { to: "/admin/activity-financials", label: "Activity Financial Approvals", icon: CircleDollarSign },
+  { to: "/admin/financial-transactions", label: "Financial Transactions", icon: CircleDollarSign },
   { to: "/admin/registration-requests", label: "Registration Requests", icon: ShieldCheck },
   { to: "/admin/user-assignments", label: "User Assignments", icon: UserRoundCog },
   { to: "/admin/scope-reviews", label: "Scope Reviews", icon: ClipboardList },
@@ -74,7 +76,7 @@ function PortalLayout() {
     <Route path="/tenders" element={<TendersPage/>}/><Route path="/tenders/new" element={<TenderFormPage/>}/><Route path="/tenders/:id/edit" element={<TenderFormPage/>}/><Route path="/tenders/:tenderId/bids" element={<TenderBidsPage/>}/><Route path="/tenders/:tenderId/technical-evaluation" element={<TenderBidsPage/>}/><Route path="/tenders/:tenderId/financial-evaluation" element={<FinancialEvaluationPage/>}/><Route path="/tenders/:tenderId/comparative-statement" element={<ComparativeStatementPage/>}/><Route path="/tenders/:tenderId/award-recommendation" element={<AwardRecommendationPage/>}/><Route path="/tenders/:id" element={<TenderDetailPage/>}/>
     <Route path="/tender-awards/:id" element={<TenderAwardDetailPage/>}/><Route path="/work-orders/:id" element={<WorkOrderDetailPage/>}/>
     <Route path="/activities" element={<ActivityMasterPage/>}/>
-    <Route element={<AdminRoute/>}><Route path="/settings" element={<AdminSettingsPage/>}/><Route path="/admin/activity-financials" element={<ActivityFinancialsPage/>}/><Route path="/admin/registration-requests" element={<RegistrationRequestsPage/>}/><Route path="/admin/user-assignments" element={<UserAssignmentsPage/>}/><Route path="/admin/scope-reviews" element={<ScopesPage/>}/></Route>
+    <Route element={<AdminRoute/>}><Route path="/settings" element={<AdminSettingsPage/>}/><Route path="/admin/activity-financials" element={<ActivityFinancialsPage/>}/><Route path="/admin/financial-transactions" element={<FinancialTransactionsPage/>}/><Route path="/admin/registration-requests" element={<RegistrationRequestsPage/>}/><Route path="/admin/user-assignments" element={<UserAssignmentsPage/>}/><Route path="/admin/scope-reviews" element={<ScopesPage/>}/></Route>
   </Routes></main></div>;
 }
 

@@ -120,8 +120,7 @@ service cloud.firestore {
         && request.resource.data.status in ['draft', 'revision_required', 'submitted']
         && request.resource.data.updatedBy == request.auth.uid
         && packageIdentityUnchanged()
-        && hasValidScope(request.resource.data)
-        && packageActivitiesWithinScope(request.resource.data)
+        && validPackageLifecycle(request.resource.data)
         && request.resource.data.administrativeApprovalAmount == resource.data.administrativeApprovalAmount
         && request.resource.data.technicalSanctionAmount == resource.data.technicalSanctionAmount;
     }
@@ -139,6 +138,14 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId))
         && get(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId)).data.dietId == data.dietId
         && get(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId)).data.executingAgencyId == data.executingAgencyId;
+    }
+
+    function historicalFinancialPhase(data) {
+      return data.phaseSequence is int && data.phaseSequence > 0 && data.phaseSequence <= 2;
+    }
+
+    function validPackageLifecycle(data) {
+      return historicalFinancialPhase(data) || (hasValidScope(data) && packageActivitiesWithinScope(data));
     }
 
     function packageActivitiesWithinScope(data) {
@@ -180,8 +187,7 @@ service cloud.firestore {
       return assignedToAgency(resource.data.executingAgencyId)
         && packageIdentityUnchanged()
         && hasValidActiveAssignment(request.resource.data)
-        && hasValidScope(request.resource.data)
-        && packageActivitiesWithinScope(request.resource.data)
+        && validPackageLifecycle(request.resource.data)
         && resource.data.status in ['draft', 'agency_revision', 'diet_revision_requested', 'diet_concurred', 'ready_for_scert', 'scert_revision_required', 'revision_required']
         && request.resource.data.status in ['draft', 'agency_revision', 'sent_to_diet', 'ready_for_scert', 'submitted_to_scert'];
     }
@@ -491,7 +497,12 @@ service cloud.firestore {
               && existsAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId))
               && getAfter(/databases/$(database)/documents/workPackages/$(request.resource.data.entityId)).data.updatedBy == request.auth.uid)
             || (request.resource.data.entityType == 'work_order'
-              && request.resource.data.action in ['work_order_created', 'work_order_updated', 'work_order_issued'])));
+              && request.resource.data.action in ['work_order_created', 'work_order_updated', 'work_order_issued'])
+            || (request.resource.data.entityType == 'financial_transaction'
+              && request.resource.data.action == 'financial_transaction_created'
+              && role() in ['scert_admin','finance_officer']
+              && existsAfter(/databases/$(database)/documents/financialTransactions/$(request.resource.data.entityId))
+              && getAfter(/databases/$(database)/documents/financialTransactions/$(request.resource.data.entityId)).data.createdBy == request.auth.uid)));
       allow update, delete: if false;
     }
 
@@ -524,8 +535,7 @@ service cloud.firestore {
           && request.resource.data.administrativeApprovalAmount == 0
           && request.resource.data.technicalSanctionAmount == 0
           && hasValidActiveAssignment(request.resource.data)
-          && hasValidScope(request.resource.data)
-          && packageActivitiesWithinScope(request.resource.data)
+          && validPackageLifecycle(request.resource.data)
           && assignedToAgency(request.resource.data.executingAgencyId);
       allow update: if isScertAdmin()
         || agencyPackageWorkflowAllowed()
@@ -539,6 +549,7 @@ service cloud.firestore {
     match /dietActivityFinancials/{financialId} {
       allow read: if canReadActivityFinancial(resource.data);
       allow create, update: if isScertAdmin()
+        && historicalFinancialPhase(request.resource.data)
         && request.resource.data.originalApprovedAmount >= 0
         && request.resource.data.currentEffectiveApprovedAmount >= 0
         && request.resource.data.principalAllocation >= 0
@@ -548,6 +559,18 @@ service cloud.firestore {
         && request.resource.data.unallocatedApprovedAmount == request.resource.data.currentEffectiveApprovedAmount - request.resource.data.totalAllocatedAmount
         && request.resource.data.updatedBy == request.auth.uid;
       allow delete: if false;
+    }
+
+    match /financialTransactions/{transactionId} {
+      allow read: if canViewAllDiets() || assignedToDiet(resource.data.dietId)
+        || (assignedToAgency(resource.data.agencyId) && resource.data.transactionType in ['release_to_agency','diet_to_agency_transfer','agency_expenditure','refund','adjustment']);
+      allow create: if role() in ['scert_admin','finance_officer']
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.amount > 0
+        && request.resource.data.activityId is string
+        && request.resource.data.activityId.size() > 0
+        && request.resource.data.documentIds is list;
+      allow update, delete: if false;
     }
 
     match /drawingPackages/{drawingId}{
