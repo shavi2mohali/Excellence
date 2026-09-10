@@ -2,21 +2,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, XCircle } from "lucide-react";
 import { punjabDistricts } from "../constants/punjabDistricts";
 import { approveRegistration, getRegistrationRequests, rejectRegistration } from "../services/approvalService";
-import { createAgency, getAgencies, normaliseAgencyName, type AgencyInput } from "../services/agencyService";
+import { getRequestedSystemRole } from "../constants/organisationRoles";
 import { getDiets } from "../lib/firestore";
-import type { Agency, AgencyType, ApprovalStatus, Diet, RegistrationRequest, SystemRole } from "../types";
-
-const approvableRoles: SystemRole[] = ["diet_nodal_officer", "agency_user", "architecture_user", "scert_viewer", "finance_officer", "monitoring_officer"];
-
-function defaultRole(request: RegistrationRequest): SystemRole {
-  return request.organisationRole === "diet" ? "diet_nodal_officer" : request.organisationRole === "architecture_department" ? "architecture_user" : "agency_user";
-}
-
-function agencyTypeForRequest(request: RegistrationRequest): AgencyType {
-  if (request.organisationRole === "pwd") return "PWD";
-  if (request.organisationRole === "rdp") return "Rural Development and Panchayat Department";
-  return "Other";
-}
+import type { Diet, RegistrationRequest } from "../types";
 
 function formatDate(value: unknown) {
   if (!value) return "--";
@@ -29,7 +17,6 @@ function formatDate(value: unknown) {
 export function RegistrationRequestsPage() {
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [diets, setDiets] = useState<Diet[]>([]);
-  const [agencies, setAgencies] = useState<Agency[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -39,10 +26,7 @@ export function RegistrationRequestsPage() {
   const [search, setSearch] = useState("");
   const [selectedRequest, setSelectedRequest] = useState<RegistrationRequest | null>(null);
   const [dialogMode, setDialogMode] = useState<"view" | "approve" | "reject" | null>(null);
-  const [selectedRole, setSelectedRole] = useState<SystemRole>("pending_user");
-  const [assignedDietId, setAssignedDietId] = useState("");
-  const [assignedAgencyId, setAssignedAgencyId] = useState("");
-  const [createNewAgency, setCreateNewAgency] = useState(false);
+  const [assignedDietIds, setAssignedDietIds] = useState<string[]>([]);
   const [remarks, setRemarks] = useState("");
   const [reviewing, setReviewing] = useState(false);
 
@@ -53,11 +37,6 @@ export function RegistrationRequestsPage() {
       const [requestData, dietData] = await Promise.all([getRegistrationRequests(), getDiets()]);
       setRequests(requestData);
       setDiets(dietData);
-      try {
-        setAgencies(await getAgencies());
-      } catch {
-        setAgencies([]);
-      }
     } catch (loadError) {
       setRequests([]);
       setError(loadError instanceof Error ? loadError.message : "Registration requests could not be loaded.");
@@ -90,22 +69,10 @@ export function RegistrationRequestsPage() {
     );
   });
 
-  const matchingAgencies = selectedRequest
-    ? agencies.filter(
-        (agency) =>
-          agency.type === agencyTypeForRequest(selectedRequest) ||
-          normaliseAgencyName(agency.name) === normaliseAgencyName(selectedRequest.organisationName),
-      )
-    : [];
-  const matchingDiets = selectedRequest?.districtName ? diets.filter((diet) => diet.district.toLowerCase() === selectedRequest.districtName!.toLowerCase()) : [];
-
   function openDialog(request: RegistrationRequest, mode: "view" | "approve" | "reject") {
     setSelectedRequest(request);
     setDialogMode(mode);
-    setSelectedRole(defaultRole(request));
-    setAssignedDietId("");
-    setAssignedAgencyId("");
-    setCreateNewAgency(false);
+    setAssignedDietIds(request.registeredDietId ? [request.registeredDietId] : []);
     setRemarks("");
     setNotice("");
     setError("");
@@ -123,25 +90,9 @@ export function RegistrationRequestsPage() {
     setError("");
 
     try {
-      let agencyId = assignedAgencyId;
-      if (createNewAgency && !["diet", "architecture_department"].includes(selectedRequest.organisationRole) && !agencyId) {
-        const agencyPayload: AgencyInput = {
-          name: selectedRequest.organisationName,
-          type: agencyTypeForRequest(selectedRequest),
-          contactPersonName: selectedRequest.contactPersonName,
-          contactPersonMobile: selectedRequest.mobile,
-          contactPersonEmail: selectedRequest.email,
-          address: selectedRequest.officeAddress,
-          active: true,
-        };
-        agencyId = await createAgency(agencyPayload);
-      }
-
       await approveRegistration({
         request: selectedRequest,
-        systemRole: selectedRole,
-        assignedDietIds: selectedRequest.organisationRole === "architecture_department" ? [] : assignedDietId ? [assignedDietId] : [],
-        assignedAgencyIds: selectedRequest.organisationRole === "architecture_department" ? [] : agencyId ? [agencyId] : [],
+        assignedDietIds,
         remarks,
       });
       closeDialog();
@@ -177,7 +128,7 @@ export function RegistrationRequestsPage() {
       <header className="page-header">
         <span className="eyebrow">SCERT administration</span>
         <h1>Registration Requests</h1>
-        <p>Review pending registrations and activate approved Centre of Excellence PMIS users.</p>
+        <p>Review pending registrations and activate organisation accounts with their DIET responsibility.</p>
       </header>
 
       <div className="stat-grid compact-stats">
@@ -234,6 +185,11 @@ export function RegistrationRequestsPage() {
         <section className="section-band review-panel">
           <div className="section-title"><h2>{dialogMode === "approve" ? "Approve registration" : dialogMode === "reject" ? "Reject registration" : "Applicant details"}</h2><button className="secondary-button" type="button" onClick={closeDialog}>Close</button></div>
           <div className="detail-grid">
+            {selectedRequest.organisationRole === "diet" && <div><span>Registered DIET</span><strong>{diets.find(d => d.id === selectedRequest.registeredDietId)?.name || "Legacy request: verify DIET during approval"}</strong></div>}
+            <div><span>Email</span><strong>{selectedRequest.email}</strong></div>
+            <div><span>Office address</span><strong>{selectedRequest.officeAddress}</strong></div>
+            <div><span>Division</span><strong>{selectedRequest.divisionName || "—"}</strong></div>
+            <div><span>Engineering discipline</span><strong>{selectedRequest.engineeringDiscipline || "—"}</strong></div>
             <div><span>Applicant</span><strong>{selectedRequest.contactPersonName}</strong></div>
             <div><span>Organisation</span><strong>{selectedRequest.organisationName}</strong></div>
             <div><span>Type</span><strong>{selectedRequest.organisationRoleLabel}</strong></div>
@@ -242,15 +198,16 @@ export function RegistrationRequestsPage() {
 
           {dialogMode === "approve" ? (
             <form className="agency-form review-form" onSubmit={handleApprove}>
-              <label>Proposed system role<select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as SystemRole)}>{approvableRoles.map((role) => <option key={role} value={role}>{role.replaceAll("_", " ")}</option>)}</select></label>
-              {selectedRequest.organisationRole === "architecture_department" ? <div className="muted-text">Architecture users are approved as unassigned. Assign one or more DIETs from Approved User Assignments.</div> : selectedRequest.organisationRole === "diet" ? (
-                <label>Assigned DIET<select value={assignedDietId} onChange={(event) => setAssignedDietId(event.target.value)}><option value="">Approve first and assign later</option>{matchingDiets.map((diet) => <option key={diet.id} value={diet.id}>{diet.name}</option>)}</select></label>
-              ) : (
-                <>
-                  <label>Assigned agency<select value={assignedAgencyId} onChange={(event) => setAssignedAgencyId(event.target.value)}><option value="">Approve first and assign later</option>{matchingAgencies.map((agency) => <option key={agency.id} value={agency.id}>{agency.name}</option>)}</select></label>
-                  <label className="checkbox-row"><input type="checkbox" checked={createNewAgency} onChange={(event) => setCreateNewAgency(event.target.checked)} disabled={Boolean(assignedAgencyId)} />Create new agency from this request</label>
-                </>
-              )}
+              <label>System role<input readOnly value={getRequestedSystemRole(selectedRequest.organisationRole).replaceAll("_", " ")} /></label>
+              {selectedRequest.organisationRole === "diet" ? <label>Registered DIET (verify before approval)
+                <select required value={assignedDietIds[0] || ""} disabled={Boolean(selectedRequest.registeredDietId)} onChange={e => setAssignedDietIds([e.target.value])}>
+                  <option value="">Verify DIET for this legacy registration</option>
+                  {diets.filter(d => d.active !== false).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </label> : <fieldset className="agency-form-wide"><legend>Assigned DIETs *</legend>
+                <p>Select the DIET projects this organisation is responsible for.</p>
+                {diets.filter(d => d.active !== false).map(d => <label key={d.id} className="checkbox-row"><input type="checkbox" checked={assignedDietIds.includes(d.id)} onChange={() => setAssignedDietIds(ids => ids.includes(d.id) ? ids.filter(id => id !== d.id) : [...ids, d.id])} />{d.name}</label>)}
+              </fieldset>}
               <label className="agency-form-wide">Approval remarks<textarea rows={3} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></label>
               <div className="form-actions"><button className="primary-button" type="submit" disabled={reviewing}>{reviewing ? "Approving..." : "Approve Registration"}</button></div>
             </form>

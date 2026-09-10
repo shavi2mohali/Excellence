@@ -35,6 +35,20 @@ service cloud.firestore {
         : null;
     }
 
+    function validRegisteredDiet(data) {
+      return data.organisationRole != 'diet' || (
+        data.get('registeredDietId', '') is string
+        && data.get('registeredDietId', '').size() > 0
+        && exists(/databases/$(database)/documents/diets/$(data.registeredDietId))
+        && get(/databases/$(database)/documents/diets/$(data.registeredDietId)).data.get('active', true) == true
+        && get(/databases/$(database)/documents/diets/$(data.registeredDietId)).data.districtId == data.districtId);
+    }
+
+    function agencyResponsibleForDiet(dietId) {
+      return role() == 'agency_user' && currentUser().get('assignmentStatus', '') == 'assigned'
+        && dietId in currentUser().get('assignedDietIds', []);
+    }
+
     function isOwnPendingUserProfile(userId) {
       return isSignedIn()
         && request.auth.uid == userId
@@ -45,6 +59,11 @@ service cloud.firestore {
         && request.resource.data.active == false
         && request.resource.data.isActive == false
         && request.resource.data.approved == false
+        && request.resource.data.get('assignedDietIds', []) == []
+        && request.resource.data.get('assignedAgencyIds', []) == []
+        && request.resource.data.get('primaryDietId', null) == null
+        && request.resource.data.get('primaryAgencyId', null) == null
+        && validRegisteredDiet(request.resource.data)
         && ((request.resource.data.organisationRole == 'architecture_department'
           && request.resource.data.architectureZone in ['north','south','east','west']
           && request.resource.data.get('districtId','') == '')
@@ -58,6 +77,10 @@ service cloud.firestore {
         && request.auth.uid == requestId
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
+        && request.resource.data.get('assignedDietIds', []) == []
+        && request.resource.data.get('assignedAgencyIds', []) == []
+        && validRegisteredDiet(request.resource.data)
+        && request.resource.data.requestedSystemRole == (request.resource.data.organisationRole == 'diet' ? 'diet_nodal_officer' : request.resource.data.organisationRole == 'architecture_department' ? 'architecture_user' : 'agency_user')
         && ((request.resource.data.organisationRole == 'architecture_department'
           && request.resource.data.requestedSystemRole == 'architecture_user'
           && request.resource.data.architectureZone in ['north','south','east','west']
@@ -224,8 +247,7 @@ service cloud.firestore {
     }
 
     function agencyForDiet(diet) {
-      return role() == 'agency_user'
-        && diet.data.get('assignedAgencyId', '') in currentUser().get('assignedAgencyIds', []);
+      return assignedToAgency(diet.data.get('assignedAgencyId', ''));
     }
 
     function onlyFinancialFieldsChanged() {
@@ -413,7 +435,10 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn()
-        && (request.auth.uid == userId || isScertAdmin());
+        && (request.auth.uid == userId || isScertAdmin()
+          || (role() == 'diet_nodal_officer' && resource.data.systemRole == 'architecture_user'
+            && resource.data.active == true && resource.data.approvalStatus == 'approved'
+            && resource.data.get('assignedDietIds', []).hasAny(currentUser().get('assignedDietIds', []))));
       allow create: if isScertAdmin() || isOwnPendingUserProfile(userId);
       allow update: if isScertAdmin();
       allow delete: if false;
@@ -574,7 +599,7 @@ service cloud.firestore {
     }
 
     match /drawingPackages/{drawingId}{
-      allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||isArchitectureUser()||assignedToAgency(resource.data.executingAgencyId);
+      allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||assignedArchitectureDiet(resource.data.dietId)||assignedToAgency(resource.data.executingAgencyId);
       allow create: if isArchitectureUser()&&request.resource.data.drawingDiscipline=='architectural'&&request.resource.data.issuedBy==request.auth.uid;
       allow update: if isArchitectureUser()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']);
       allow delete: if false;
@@ -784,7 +809,9 @@ service cloud.firestore {
       allow read: if isScertAdmin()
         || canViewAllDiets()
         || assignedToDiet(dietId)
-        || agencyForDiet(resource);
+        || agencyForDiet(resource)
+        || agencyResponsibleForDiet(dietId)
+        || assignedArchitectureDiet(dietId);
       allow create, delete: if isScertAdmin();
       allow update: if isScertAdmin()
         || assignedToDiet(dietId)

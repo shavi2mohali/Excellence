@@ -52,77 +52,23 @@ export async function getUserAssignmentHistory(userId: string): Promise<UserAssi
     .sort((a, b) => Number(b.active) - Number(a.active));
 }
 
-type Target = { diet?: Diet; agency?: Agency; remarks: string };
-
-async function assign(user: AppUser, target: Target) {
+export async function assignOrganisationDiets(user: AppUser, diets: Diet[], remarks: string) {
   const { firestore, adminUid } = requireAdmin();
-  const role = user.organisationRole;
-  if (user.approvalStatus !== "approved" || user.active !== true || !role || !["diet", "pwd", "rdp"].includes(role)) {
-    throw new Error("Only active, approved DIET, PWD, or RDP users can be assigned.");
-  }
-  if (role === "diet" && !target.diet) throw new Error("Select a DIET.");
-  if (role !== "diet" && (!target.agency || target.agency.agencyCategory !== "executing_agency" || target.agency.agencyType !== role)) {
-    throw new Error(`Select an active ${role.toUpperCase()} executing agency.`);
-  }
-
-  const userRef = doc(firestore, "users", user.uid);
-  const newHistoryRef = doc(collection(firestore, "userAssignments"));
-  const auditRef = doc(collection(firestore, "auditLogs"));
-  await runTransaction(firestore, async (transaction) => {
-    const currentSnap = await transaction.get(userRef);
-    if (!currentSnap.exists()) throw new Error("User profile no longer exists.");
-    const current = normaliseAssignmentProfile({ uid: user.uid, ...currentSnap.data() } as AppUser);
-    const histories = await getDocs(query(collection(firestore, "userAssignments"), where("userId", "==", user.uid), where("active", "==", true)));
-    const reassignment = current.assignmentStatus === "assigned";
-    histories.docs.forEach((history) => transaction.update(history.ref, {
-      active: false, endedBy: adminUid, endedAt: serverTimestamp(), updatedAt: serverTimestamp(),
-    }));
-    const dietId = target.diet?.id ?? null;
-    const agencyId = target.agency?.id ?? null;
-    const next = role === "diet" ? {
-      primaryDietId: dietId, assignedDietIds: [dietId], primaryAgencyId: current.primaryAgencyId ?? null,
-      assignedAgencyIds: current.assignedAgencyIds ?? [],
-    } : {
-      primaryAgencyId: agencyId, assignedAgencyIds: [agencyId], primaryDietId: current.primaryDietId ?? null,
-      assignedDietIds: current.assignedDietIds ?? [],
-    };
-    const common = { assignmentStatus: "assigned", assignedBy: adminUid, assignedAt: serverTimestamp(), assignmentRemarks: target.remarks.trim(), updatedAt: serverTimestamp() };
-    transaction.update(userRef, { ...next, ...common });
-    transaction.set(newHistoryRef, {
-      id: newHistoryRef.id, userId: user.uid, userEmail: user.email, organisationRole: role,
-      systemRole: user.systemRole ?? user.role, assignmentType: reassignment ? "reassignment" : role === "diet" ? "diet_assignment" : "agency_assignment",
-      dietId, dietName: target.diet?.name ?? null, agencyId, agencyName: target.agency?.name ?? null,
-      previousDietId: current.primaryDietId ?? null, previousAgencyId: current.primaryAgencyId ?? null,
-      status: "assigned", remarks: target.remarks.trim(), assignedBy: adminUid, assignedAt: serverTimestamp(),
-      endedBy: null, endedAt: null, active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-    });
-    transaction.set(auditRef, {
-      entityType: "user_assignment", entityId: user.uid,
-      action: reassignment ? "reassignment" : `${role}_user_assignment`, performedBy: adminUid,
-      performedAt: serverTimestamp(), previousData: { primaryDietId: current.primaryDietId ?? null, primaryAgencyId: current.primaryAgencyId ?? null },
-      newData: { dietId, agencyId, assignmentStatus: "assigned" }, remarks: target.remarks.trim(),
-    });
-  });
-}
-
-export const assignUserToDiet = (user: AppUser, diet: Diet, remarks: string) => assign(user, { diet, remarks });
-export const assignUserToAgency = (user: AppUser, agency: Agency, remarks: string) => assign(user, { agency, remarks });
-export const reassignUser = (user: AppUser, target: Target) => assign(user, target);
-
-export async function assignArchitectureUserToDiets(user: AppUser, diets: Diet[], remarks: string) {
-  const { firestore, adminUid } = requireAdmin();
-  if (user.organisationRole !== "architecture_department" || user.approvalStatus !== "approved" || user.active !== true) throw new Error("Only an active, approved Architecture user can be assigned.");
+  if (!["diet", "pwd", "rdp", "architecture_department"].includes(user.organisationRole || "") || user.approvalStatus !== "approved" || user.active !== true) throw new Error("Only an active, approved organisation can be reassigned.");
   if (!diets.length) throw new Error("Select at least one DIET.");
+  if (user.organisationRole === "diet" && diets.length !== 1) throw new Error("Select exactly one DIET.");
   const userRef = doc(firestore, "users", user.uid), historyRef = doc(collection(firestore, "userAssignments")), auditRef = doc(collection(firestore, "auditLogs"));
   await runTransaction(firestore, async transaction => {
     const snap = await transaction.get(userRef); if (!snap.exists()) throw new Error("User profile no longer exists.");
     const current = normaliseAssignmentProfile({ uid: user.uid, ...snap.data() } as AppUser);
+    if (current.approvalStatus !== "approved" || current.active !== true) throw new Error("Account is no longer active and approved.");
+    for (const diet of diets) { const master = await transaction.get(doc(firestore, "diets", diet.id)); if (!master.exists() || master.data().active === false) throw new Error("DIET is missing or inactive."); }
     const histories = await getDocs(query(collection(firestore, "userAssignments"), where("userId", "==", user.uid), where("active", "==", true)));
     histories.docs.forEach(item => transaction.update(item.ref, { active: false, endedBy: adminUid, endedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
     const ids = diets.map(diet => diet.id), names = diets.map(diet => diet.name), reassignment = current.assignmentStatus === "assigned";
-    transaction.update(userRef, { assignedDietIds: ids, primaryDietId: ids[0] ?? null, assignedAgencyIds: [], primaryAgencyId: null, assignmentStatus: "assigned", assignedBy: adminUid, assignedAt: serverTimestamp(), assignmentRemarks: remarks.trim(), updatedAt: serverTimestamp() });
-    transaction.set(historyRef, { id: historyRef.id, userId: user.uid, userEmail: user.email, organisationRole: user.organisationRole, systemRole: "architecture_user", assignmentType: reassignment ? "reassignment" : "architecture_diet_assignment", architectureZone: user.architectureZone ?? null, assignedDietIds: ids, assignedDietNames: names, dietId: ids[0] ?? null, dietName: names[0] ?? null, agencyId: null, agencyName: null, previousDietId: current.primaryDietId ?? null, previousAgencyId: null, status: "assigned", remarks: remarks.trim(), assignedBy: adminUid, assignedAt: serverTimestamp(), endedBy: null, endedAt: null, active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    transaction.set(auditRef, { entityType: "user_assignment", entityId: user.uid, action: reassignment ? "reassignment" : "architecture_diet_assignment", performedBy: adminUid, performedAt: serverTimestamp(), previousData: { assignedDietIds: current.assignedDietIds ?? [] }, newData: { assignedDietIds: ids, assignmentStatus: "assigned" }, remarks: remarks.trim() });
+    transaction.update(userRef, { assignedDietIds: ids, primaryDietId: ids[0] ?? null,  assignmentStatus: "assigned", assignedBy: adminUid, assignedAt: serverTimestamp(), assignmentRemarks: remarks.trim(), updatedAt: serverTimestamp() });
+    transaction.set(historyRef, { id: historyRef.id, userId: user.uid, userEmail: user.email, organisationRole: user.organisationRole, systemRole: current.systemRole || current.role, assignmentType: reassignment ? "reassignment" : "diet_assignment", architectureZone: user.architectureZone ?? null, assignedDietIds: ids, assignedDietNames: names, dietId: ids[0] ?? null, dietName: names[0] ?? null, agencyId: null, agencyName: null, previousDietId: current.primaryDietId ?? null, previousAgencyId: null, status: "assigned", remarks: remarks.trim(), assignedBy: adminUid, assignedAt: serverTimestamp(), endedBy: null, endedAt: null, active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    transaction.set(auditRef, { entityType: "user_assignment", entityId: user.uid, action: reassignment ? "reassignment" : "diet_assignment", performedBy: adminUid, performedAt: serverTimestamp(), previousData: { assignedDietIds: current.assignedDietIds ?? [] }, newData: { assignedDietIds: ids, assignmentStatus: "assigned" }, remarks: remarks.trim() });
   });
 }
 
@@ -135,9 +81,8 @@ export async function deactivateUserAssignment(user: AppUser, remarks: string) {
     histories.docs.forEach((history) => transaction.update(history.ref, {
       active: false, endedBy: adminUid, endedAt: serverTimestamp(), updatedAt: serverTimestamp(),
     }));
-    const dietUser = user.organisationRole === "diet" || user.organisationRole === "architecture_department";
     transaction.update(doc(firestore, "users", user.uid), {
-      assignmentStatus: "inactive", ...(dietUser ? { primaryDietId: null, assignedDietIds: [] } : { primaryAgencyId: null, assignedAgencyIds: [] }),
+      assignmentStatus: "inactive", primaryDietId: null, assignedDietIds: [],
       assignmentRemarks: remarks.trim(), updatedAt: serverTimestamp(),
     });
     transaction.set(auditRef, { entityType: "user_assignment", entityId: user.uid, action: "assignment_deactivation", performedBy: adminUid,

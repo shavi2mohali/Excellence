@@ -5,6 +5,7 @@ import { organisationRoleOptions } from "../constants/organisationRoles";
 import { punjabDistricts } from "../constants/punjabDistricts";
 import { architectureZones, type ArchitectureZone } from "../constants/architectureZones";
 import { registerPendingUser } from "../services/registrationService";
+import { diets as registrationDiets } from "../data/masterData";
 import type { OrganisationRole } from "../types";
 
 const initialStepOne = {
@@ -15,6 +16,8 @@ const initialStepOne = {
 
 const initialDetails = {
   organisationName: "",
+  registeredDietId: "",
+  engineeringDiscipline: "",
   contactPersonName: "",
   designation: "",
   mobile: "",
@@ -63,6 +66,7 @@ export function RegisterPage() {
 
   function validateDetails() {
     const nextErrors: Record<string, string> = {};
+    if (stepOne.organisationRole === "diet" && !registrationDiets.some(d => d.id === details.registeredDietId && d.district === selectedDistrict?.name)) nextErrors.registeredDietId = "Select the DIET in your registered district.";
     if (!details.organisationName.trim()) nextErrors.organisationName = "Organisation or DIET name is required.";
     if (!details.contactPersonName.trim()) nextErrors.contactPersonName = "Contact person name is required.";
     if (!details.designation.trim()) nextErrors.designation = "Designation is required.";
@@ -96,6 +100,8 @@ export function RegisterPage() {
         districtId: stepOne.districtId,
         architectureZone: stepOne.architectureZone || undefined,
         organisationName: details.organisationName.trim(),
+        registeredDietId: details.registeredDietId,
+        engineeringDiscipline: details.engineeringDiscipline,
         contactPersonName: details.contactPersonName.trim(),
         designation: details.designation.trim(),
         mobile: details.mobile.trim(),
@@ -168,9 +174,11 @@ export function RegisterPage() {
           </form>
         ) : (
           <form className="agency-form" onSubmit={handleSubmit} noValidate>
+            {stepOne.organisationRole === "diet" && <label>DIET *<select required value={details.registeredDietId} onChange={e => { const diet = registrationDiets.find(d => d.id === e.target.value); setDetails({ ...details, registeredDietId: e.target.value, organisationName: diet?.name || "" }); }}><option value="">Select DIET</option>{registrationDiets.filter(d => d.district === selectedDistrict?.name).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>{errors.registeredDietId && <span className="field-error">{errors.registeredDietId}</span>}</label>}
+            {["pwd", "rdp"].includes(stepOne.organisationRole) && <label>Engineering discipline<input value={details.engineeringDiscipline} onChange={e => setDetails({ ...details, engineeringDiscipline: e.target.value })} /></label>}
             <label>
               {nameLabel} *
-              <input value={details.organisationName} onChange={(event) => setDetails({ ...details, organisationName: event.target.value })} />
+              <input readOnly={stepOne.organisationRole === "diet"} value={details.organisationName} onChange={(event) => setDetails({ ...details, organisationName: event.target.value })} />
               {errors.organisationName ? <span className="field-error">{errors.organisationName}</span> : null}
             </label>
             <label>

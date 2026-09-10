@@ -32,6 +32,8 @@ export type AppUser = {
   organisationRole?: OrganisationRole;
   organisationRoleLabel?: string;
   organisationName?: string;
+  registeredDietId?: string;
+  engineeringDiscipline?: string;
   districtId?: string;
   districtName?: string;
   architectureZone?: ArchitectureZone;
@@ -103,6 +105,9 @@ export type RegistrationRequest = {
   organisationRole: OrganisationRole;
   organisationRoleLabel: string;
   organisationName: string;
+  registeredDietId?: string;
+  divisionName?: string;
+  engineeringDiscipline?: string;
   districtId?: string;
   districtName?: string;
   architectureZone?: ArchitectureZone;

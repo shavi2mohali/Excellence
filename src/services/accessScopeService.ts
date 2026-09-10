@@ -19,6 +19,8 @@ export function assignedAgencyIds(profile: AppUser) {
 
 export async function getUserAccessScope(profile: AppUser): Promise<AccessScope> {
   const role = profile.systemRole || profile.role;
+  if ((profile.approvalStatus ? profile.approvalStatus !== "approved" : profile.approved !== true)
+    || (profile.active !== true && profile.isActive !== true) || profile.assignmentStatus === "inactive") return { accessType: "none", dietIds: [], agencyIds: [], districtIds: [] };
   if (role && globalRoles.has(role)) return { accessType: "global", dietIds: null, agencyIds: null, districtIds: null };
 
   if (role === "diet_nodal_officer") {
@@ -34,7 +36,7 @@ export async function getUserAccessScope(profile: AppUser): Promise<AccessScope>
     return {
       accessType: agencyIds.length ? "agency" : "none",
       agencyIds,
-      dietIds: unique(relevant.map((item) => item.dietId)),
+      dietIds: unique([...assignedDietIds(profile), ...relevant.map((item) => item.dietId)]),
       districtIds: unique(relevant.map((item) => item.districtId)),
     };
   }
@@ -59,14 +61,16 @@ export async function getAccessibleDiets(scope: AccessScope): Promise<Diet[]> {
   if (scope.accessType === "global") {
     return getDiets();
   }
+
   if (scope.accessType === "agency") {
+    // Legacy agencies may read assignment records without permission to read the DIET document.
     const assignments = await getAccessibleAssignments(scope);
-    return [...new Map(assignments.filter((item) => !["cancelled", "superseded"].includes(item.status)).map((item) => ({
-      id: item.dietId, name: item.dietName, district: item.districtName, districtId: item.districtId, districtName: item.districtName,
-      phaseId: item.phaseId, phaseName: item.phaseName, phaseYear: item.phaseName, status: "planning", totalApprovedCost: 0,
-      centralShare: 0, stateShare: 0, fundsReleased: 0, expenditure: 0, physicalProgressPercent: 0, financialProgressPercent: 0,
-      assignedAgencyId: item.executingAgencyId, nodalOfficerName: "", nodalOfficerMobile: "", nodalOfficerEmail: "",
-    } as Diet)).map((item) => [item.id, item])).values()];
+    const mapped = new Map(assignments.filter(a => !["cancelled", "superseded"].includes(a.status)).map(a => [a.dietId, {
+      id: a.dietId, name: a.dietName, district: a.districtName, districtId: a.districtId,
+      phaseId: a.phaseId, phaseName: a.phaseName, phaseYear: a.phaseName, assignedAgencyId: a.executingAgencyId,
+    } as Diet]));
+    for (const id of scope.dietIds || []) if (!mapped.has(id)) { const diet = await getDietById(id); if (diet) mapped.set(id, diet); }
+    return [...mapped.values()];
   }
   return (await Promise.all((scope.dietIds || []).map(getDietById))).filter((item): item is Diet => Boolean(item));
 }

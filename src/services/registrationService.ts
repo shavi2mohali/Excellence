@@ -5,11 +5,14 @@ import { getOrganisationRoleLabel, getRequestedSystemRole } from "../constants/o
 import { getDistrictName } from "../constants/punjabDistricts";
 import { getArchitectureZoneLabel, type ArchitectureZone } from "../constants/architectureZones";
 import { auth, db, getFirebaseConfigurationMessage, isFirebaseConfigured } from "../lib/firebase";
+import { diets as registrationDiets } from "../data/masterData";
 import type { OrganisationRole } from "../types";
 
 export type RegistrationFormInput = {
   organisationRole: OrganisationRole;
   organisationName: string;
+  registeredDietId?: string;
+  engineeringDiscipline?: string;
   districtId?: string;
   architectureZone?: ArchitectureZone;
   contactPersonName: string;
@@ -55,6 +58,8 @@ function readableRegistrationError(error: unknown) {
 
 export async function registerPendingUser(input: RegistrationFormInput) {
   const { configuredAuth } = requireFirebase();
+  const registeredDiet = input.organisationRole === "diet" ? registrationDiets.find(d => d.id === input.registeredDietId && d.district === getDistrictName(input.districtId || "")) : undefined;
+  if (input.organisationRole === "diet" && !registeredDiet) throw new Error("Select a valid DIET from the master data.");
   const registrationApp = initializeApp(configuredAuth.app.options, `registration-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const registrationAuth = getAuth(registrationApp);
   const registrationDb = getFirestore(registrationApp);
@@ -109,7 +114,9 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     designation: input.designation,
     organisationRole: input.organisationRole,
     organisationRoleLabel,
-    organisationName: input.organisationName,
+    organisationName: registeredDiet?.name || input.organisationName,
+    registeredDietId: registeredDiet?.id || "",
+    engineeringDiscipline: input.engineeringDiscipline || "",
     districtId: isArchitecture ? "" : input.districtId,
     districtName,
     architectureZone: isArchitecture ? input.architectureZone : null,
@@ -140,7 +147,9 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     email,
     organisationRole: input.organisationRole,
     organisationRoleLabel,
-    organisationName: input.organisationName,
+    organisationName: registeredDiet?.name || input.organisationName,
+    registeredDietId: registeredDiet?.id || "",
+    engineeringDiscipline: input.engineeringDiscipline || "",
     districtId: isArchitecture ? "" : input.districtId,
     districtName,
     architectureZone: isArchitecture ? input.architectureZone : null,
@@ -149,6 +158,9 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     designation: input.designation,
     mobile: input.mobile,
     officeAddress: input.officeAddress,
+    divisionName: input.divisionName || "",
+    officeTelephone: input.officeTelephone || "",
+    officialWebsite: input.officialWebsite || "",
     requestedSystemRole,
     status: "pending",
     submittedAt: serverTimestamp(),
@@ -167,7 +179,9 @@ export async function registerPendingUser(input: RegistrationFormInput) {
     return {
       userId: uid,
       email,
-      organisationName: input.organisationName,
+      organisationName: registeredDiet?.name || input.organisationName,
+      registeredDietId: registeredDiet?.id || "",
+      engineeringDiscipline: input.engineeringDiscipline || "",
       organisationRoleLabel,
       districtName,
       architectureZoneLabel,
