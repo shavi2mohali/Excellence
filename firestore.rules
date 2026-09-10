@@ -163,6 +163,33 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/scopeOfWorks/$(data.scopeOfWorkId)).data.executingAgencyId == data.executingAgencyId;
     }
 
+    // Scope capability is derived from trusted master data, not the submitted Scope.
+    function phaseSequenceFromMaster(data) {
+      let phaseId = data.get('phaseId', '');
+      let sequence = data.get('phaseSequence', 0);
+      return sequence is int && sequence > 0 ? sequence
+        : phaseId == 'phase_2023_24' ? 1
+        : phaseId == 'phase_2025_26' ? 2
+        : phaseId == 'phase_2026_27' ? 3
+        : phaseId.matches('phase_[0-9]+') ? int(phaseId.split('_')[1])
+        : phaseId != '' && exists(/databases/$(database)/documents/phases/$(phaseId))
+          ? get(/databases/$(database)/documents/phases/$(phaseId)).data.get('phaseSequence', get(/databases/$(database)/documents/phases/$(phaseId)).data.get('order', 0)) : 0;
+    }
+
+    function scopeEnabledForDiet(dietId) {
+      return exists(/databases/$(database)/documents/diets/$(dietId))
+        && phaseSequenceFromMaster(get(/databases/$(database)/documents/diets/$(dietId)).data) >= 3;
+    }
+
+    function scopeEntityEnabled(scopeId) {
+      return exists(/databases/$(database)/documents/scopeOfWorks/$(scopeId))
+        && scopeEnabledForDiet(get(/databases/$(database)/documents/scopeOfWorks/$(scopeId)).data.dietId);
+    }
+
+    function scopeAttachmentOrCommunicationEnabled(data) {
+      return data.get('entityType', '') != 'scope_of_work' || scopeEntityEnabled(data.entityId);
+    }
+
     function historicalFinancialPhase(data) {
       return data.phaseSequence is int && data.phaseSequence > 0 && data.phaseSequence <= 2;
     }
@@ -539,7 +566,8 @@ service cloud.firestore {
 
     match /scopeOfWorks/{scopeId} {
       allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||(assignedArchitectureDiet(resource.data.dietId)&&architectureScopeStatus(resource.data.status))||(assignedToAgency(resource.data.executingAgencyId)&&resource.data.status in ['released_to_executing_agency','mutually_agreed','approved']);
-      allow create: if assignedToDiet(request.resource.data.dietId)
+      allow create: if scopeEnabledForDiet(request.resource.data.dietId)
+          && assignedToDiet(request.resource.data.dietId)
           && request.resource.data.status == 'draft'
           && request.resource.data.preparedBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
@@ -547,7 +575,9 @@ service cloud.firestore {
           && request.resource.data.activityIds.size() > 0
           && exists(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId))
           && get(/databases/$(database)/documents/dietAgencyAssignments/$(request.resource.data.dietAgencyAssignmentId)).data.status == 'active';
-      allow update: if isScertAdmin() || dietScopeUpdateAllowed() || architectureScopeUpdateAllowed() || agencyScopeReviewAllowed();
+      allow update: if scopeEnabledForDiet(resource.data.dietId)
+        && request.resource.data.dietId == resource.data.dietId
+        && (isScertAdmin() || dietScopeUpdateAllowed() || architectureScopeUpdateAllowed() || agencyScopeReviewAllowed());
       allow delete: if false;
     }
 
@@ -600,18 +630,18 @@ service cloud.firestore {
 
     match /drawingPackages/{drawingId}{
       allow read: if canViewAllDiets()||assignedToDiet(resource.data.dietId)||assignedArchitectureDiet(resource.data.dietId)||assignedToAgency(resource.data.executingAgencyId);
-      allow create: if isArchitectureUser()&&request.resource.data.drawingDiscipline=='architectural'&&request.resource.data.issuedBy==request.auth.uid;
-      allow update: if isArchitectureUser()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']);
+      allow create: if scopeEntityEnabled(request.resource.data.scopeOfWorkId)&&scopeEnabledForDiet(request.resource.data.dietId)&&isArchitectureUser()&&request.resource.data.drawingDiscipline=='architectural'&&request.resource.data.issuedBy==request.auth.uid;
+      allow update: if scopeEntityEnabled(resource.data.scopeOfWorkId)&&isArchitectureUser()&&request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']);
       allow delete: if false;
     }
     match /communications/{communicationId}{
       allow read: if isScertAdmin()||resource.data.fromUserId==request.auth.uid||resource.data.toUserId==request.auth.uid||role()==resource.data.toRole;
-      allow create: if isActiveApprovedUser()&&request.resource.data.fromUserId==request.auth.uid&&request.resource.data.attachmentIds is list;
+      allow create: if scopeAttachmentOrCommunicationEnabled(request.resource.data)&&isActiveApprovedUser()&&request.resource.data.fromUserId==request.auth.uid&&request.resource.data.attachmentIds is list;
       allow update,delete: if false;
     }
     match /documentAttachments/{attachmentId}{
       allow read: if isActiveApprovedUser();
-      allow create: if isActiveApprovedUser()&&request.resource.data.uploadedBy==request.auth.uid&&request.resource.data.mimeType=='application/pdf'&&request.resource.data.size<=15728640;
+      allow create: if scopeAttachmentOrCommunicationEnabled(request.resource.data)&&isActiveApprovedUser()&&request.resource.data.uploadedBy==request.auth.uid&&request.resource.data.mimeType=='application/pdf'&&request.resource.data.size<=15728640;
       allow update,delete: if false;
     }
 

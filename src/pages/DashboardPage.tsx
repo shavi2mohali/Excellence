@@ -3,18 +3,18 @@ import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { getActivityMaster, getPhases } from "../lib/firestore";
 import { useAuth } from "../contexts/AuthContext";
-import { getAccessibleAssignments, getAccessibleDiets, getAccessibleScopes, getAccessibleTenders, getAccessibleWorkPackages } from "../services/accessScopeService";
+import { getAccessibleAssignments, getAccessibleDiets, getAccessibleTenders, getAccessibleWorkPackages } from "../services/accessScopeService";
 import { getAgency } from "../services/agencyService";
 import { formatIndianCurrency } from "../utils/currency";
 import { getPackageFinancialBasis } from "../utils/fundingCalculations";
-import type { ActivityMaster, Agency, Diet, DietAgencyAssignment, Phase, ScopeOfWork, Tender, WorkPackage } from "../types";
+import type { ActivityMaster, Agency, Diet, DietAgencyAssignment, Phase, Tender, WorkPackage } from "../types";
 
 export function DashboardPage() {
   const { profile, accessScope } = useAuth();
   const [diets,setDiets]=useState<Diet[]>([]),[phases,setPhases]=useState<Phase[]>([]),[activities,setActivities]=useState<ActivityMaster[]>([]);
-  const [assignments,setAssignments]=useState<DietAgencyAssignment[]>([]),[scopes,setScopes]=useState<ScopeOfWork[]>([]),[packages,setPackages]=useState<WorkPackage[]>([]),[tenders,setTenders]=useState<Tender[]>([]),[agencies,setAgencies]=useState<Agency[]>([]);
+  const [assignments,setAssignments]=useState<DietAgencyAssignment[]>([]),[packages,setPackages]=useState<WorkPackage[]>([]),[tenders,setTenders]=useState<Tender[]>([]),[agencies,setAgencies]=useState<Agency[]>([]);
   const [error,setError]=useState("");
-  useEffect(()=>{if(!accessScope)return;Promise.all([getAccessibleDiets(accessScope),getAccessibleAssignments(accessScope),getAccessibleScopes(accessScope),getAccessibleWorkPackages(accessScope),getAccessibleTenders(accessScope),getPhases(),accessScope.accessType==="global"?getActivityMaster():Promise.resolve([]),Promise.all((accessScope.agencyIds||[]).map(getAgency))]).then(([d,a,s,w,t,p,m,g])=>{setDiets(d);setAssignments(a);setScopes(s);setPackages(w);setTenders(t);setPhases(p);setActivities(m);setAgencies(g.filter((x):x is Agency=>Boolean(x)));}).catch(e=>setError(e instanceof Error?e.message:"Unable to load the assigned dashboard."));},[accessScope]);
+  useEffect(()=>{if(!accessScope)return;Promise.all([getAccessibleDiets(accessScope),getAccessibleAssignments(accessScope),getAccessibleWorkPackages(accessScope),getAccessibleTenders(accessScope),getPhases(),accessScope.accessType==="global"?getActivityMaster():Promise.resolve([]),Promise.all((accessScope.agencyIds||[]).map(getAgency))]).then(([d,a,w,t,p,m,g])=>{setDiets(d);setAssignments(a);setPackages(w);setTenders(t);setPhases(p);setActivities(m);setAgencies(g.filter((x):x is Agency=>Boolean(x)));}).catch(e=>setError(e instanceof Error?e.message:"Unable to load the assigned dashboard."));},[accessScope]);
   const role=profile?.systemRole||profile?.role,global=accessScope?.accessType==="global",dietUser=accessScope?.accessType==="diet",agencyUser=accessScope?.accessType==="agency";
   const noAssignment=accessScope?.accessType==="none"||(!global&&!accessScope?.dietIds?.length);
   const phaseCounts=useMemo(()=>phases.map(phase=>({...phase,count:diets.filter(d=>d.phaseId===phase.id).length})).filter(phase=>global||phase.count),[diets,phases,global]);

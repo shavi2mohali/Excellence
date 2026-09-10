@@ -1,7 +1,7 @@
 import { getDietById, getDiets } from "../lib/firestore";
 import type { AccessScope, AppUser, Diet, DietAgencyAssignment, ScopeOfWork, Tender, WorkPackage } from "../types";
 import { getAssignmentsForAgency, getAssignmentsForDiet, getDietAgencyAssignments } from "./dietAgencyAssignmentService";
-import { getScopeOfWorks, getScopesForAgency, getScopesForDiet } from "./scopeOfWorkService";
+import { getScopeOfWorks, getScopesForAgency, getScopesForDiet, getScopesForArchitecture } from "./scopeOfWorkService";
 import { getTenders, getTendersForAgency, getTendersForDiet } from "./tenderService";
 import { getWorkPackages, getWorkPackagesForAgency, getWorkPackagesForDiet } from "./workPackageService";
 
@@ -67,7 +67,7 @@ export async function getAccessibleDiets(scope: AccessScope): Promise<Diet[]> {
     const assignments = await getAccessibleAssignments(scope);
     const mapped = new Map(assignments.filter(a => !["cancelled", "superseded"].includes(a.status)).map(a => [a.dietId, {
       id: a.dietId, name: a.dietName, district: a.districtName, districtId: a.districtId,
-      phaseId: a.phaseId, phaseName: a.phaseName, phaseYear: a.phaseName, assignedAgencyId: a.executingAgencyId,
+      phaseSequence: a.phaseSequence, phaseId: a.phaseId, phaseName: a.phaseName, phaseYear: a.phaseName, assignedAgencyId: a.executingAgencyId,
     } as Diet]));
     for (const id of scope.dietIds || []) if (!mapped.has(id)) { const diet = await getDietById(id); if (diet) mapped.set(id, diet); }
     return [...mapped.values()];
@@ -83,7 +83,7 @@ export async function getAccessibleAssignments(scope: AccessScope): Promise<Diet
 export async function getAccessibleScopes(scope: AccessScope): Promise<ScopeOfWork[]> {
   if (scope.accessType === "global") return getScopeOfWorks();
   if (scope.accessType === "diet") return dedupe(await Promise.all((scope.dietIds || []).map(getScopesForDiet)));
-  if (scope.accessType === "architecture") return dedupe(await Promise.all((scope.dietIds || []).map(getScopesForDiet)));
+  if (scope.accessType === "architecture") return getScopesForArchitecture(scope.dietIds || []);
   if (scope.accessType === "agency") return dedupe(await Promise.all((scope.agencyIds || []).map(getScopesForAgency)));
   return [];
 }

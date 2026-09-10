@@ -21,16 +21,17 @@ const legacyPhaseSequence: Record<string, number> = {
 };
 
 export function getPhaseSequence(value?: { phaseId?: string; phaseSequence?: number; id?: string; order?: number }) {
-  return Number(value?.phaseSequence || 0) || legacyPhaseSequence[value?.phaseId || value?.id || ""] || Number(value?.order || 0) || 0;
+  const id = value?.phaseId || value?.id || "";
+  return Number(value?.phaseSequence || 0) || legacyPhaseSequence[id] || Number(id.match(/^phase_(\d+)$/)?.[1] || 0) || Number(value?.order || 0) || 0;
 }
 
 export function getPhaseCapabilities(phaseSequence: number): PhaseCapabilities {
   const historicalFinancialMode = phaseSequence > 0 && phaseSequence <= 2;
   return {
     historicalFinancialMode,
-    scopeRequired: !historicalFinancialMode,
-    architectureRequired: !historicalFinancialMode,
-    pabWorkflowRequired: !historicalFinancialMode,
+    scopeRequired: phaseSequence >= 3,
+    architectureRequired: phaseSequence >= 3,
+    pabWorkflowRequired: phaseSequence >= 3,
     directHistoricalApprovedAmountEntryAllowed: historicalFinancialMode,
   };
 }

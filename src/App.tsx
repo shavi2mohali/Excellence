@@ -1,3 +1,4 @@
+import { ScopePhaseProvider, useScopePhases } from "./contexts/ScopePhaseContext";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { Activity, Building2, CircleDollarSign, ClipboardList, FileText, HardHat, Landmark, LayoutDashboard, LogIn, LogOut, Package, Settings, ShieldCheck, UserRoundCog } from "lucide-react";
 import { LoginPage } from "./pages/LoginPage";
@@ -55,6 +56,7 @@ const adminNavItems = [
 
 function PortalLayout() {
   const { firebaseUser, profile, logout } = useAuth();
+  const { showNavigation, contextDietId } = useScopePhases();
   const systemRole = profile?.systemRole || profile?.role;
   const restrictedNav = systemRole === "diet_nodal_officer"
     ? [baseNavItems[0], { ...baseNavItems[1], label: "My DIET" }, baseNavItems[2], baseNavItems[4], baseNavItems[5], baseNavItems[6], baseNavItems[3]]
@@ -65,13 +67,13 @@ function PortalLayout() {
       : baseNavItems;
   const navItems = systemRole === "scert_admin" ? [baseNavItems[0], ...adminNavItems, ...baseNavItems.slice(1)] : restrictedNav;
   return <div className="app-shell"><aside className="sidebar"><div className="brand-lockup"><div className="emblem"><ShieldCheck size={24}/></div><div><span className="department">SCERT Punjab</span><strong>Centre of Excellence</strong></div></div>
-    <nav className="nav-list" aria-label="Main navigation">{navItems.map((item) => <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</nav>
+    <nav className="nav-list" aria-label="Main navigation">{navItems.filter(item => !["/scopes", "/admin/scope-reviews"].includes(item.to) || showNavigation).map((item) => <NavLink key={item.to} to={["/scopes", "/admin/scope-reviews"].includes(item.to) && contextDietId ? `${item.to}?dietId=${encodeURIComponent(contextDietId)}` : item.to} end={item.to === "/"} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</nav>
     <div className="sidebar-footer">{firebaseUser ? <><div className="user-chip"><span>{profile?.displayName || profile?.name || firebaseUser.email || "Authenticated user"}</span><small>{systemRole?.replaceAll("_", " ") || "Profile pending"}</small></div><button className="icon-text-button" onClick={() => void logout()}><LogOut size={17}/> Sign out</button></> : <NavLink className="icon-text-button" to="/login"><LogIn size={17}/> Sign in</NavLink>}</div>
   </aside><main className="content-area"><Routes>
     <Route path="/" element={<DashboardPage/>}/><Route path="/diets" element={<DietListPage/>}/><Route path="/diets/:dietId" element={<DietDetailPage/>}/>
     <Route path="/agencies" element={<CivilAgenciesPage/>}/><Route path="/agencies/:agencyId" element={<AgencyDetailPage/>}/>
     <Route path="/contractors" element={<ContractorsPage/>}/><Route path="/contractors/new" element={<ContractorFormPage/>}/><Route path="/contractors/:id/edit" element={<ContractorFormPage/>}/><Route path="/contractors/:id" element={<ContractorDetailPage/>}/>
-    <Route path="/scopes" element={<ScopesPage/>}/>
+    <Route path="/scopes" element={<ScopesPage/>}/><Route path="/scopes/:scopeId" element={<ScopesPage/>}/>
     <Route path="/work-packages" element={<WorkPackagesPage/>}/><Route path="/work-packages/:id" element={<WorkPackageDetailPage/>}/>
     <Route path="/tenders" element={<TendersPage/>}/><Route path="/tenders/new" element={<TenderFormPage/>}/><Route path="/tenders/:id/edit" element={<TenderFormPage/>}/><Route path="/tenders/:tenderId/bids" element={<TenderBidsPage/>}/><Route path="/tenders/:tenderId/technical-evaluation" element={<TenderBidsPage/>}/><Route path="/tenders/:tenderId/financial-evaluation" element={<FinancialEvaluationPage/>}/><Route path="/tenders/:tenderId/comparative-statement" element={<ComparativeStatementPage/>}/><Route path="/tenders/:tenderId/award-recommendation" element={<AwardRecommendationPage/>}/><Route path="/tenders/:id" element={<TenderDetailPage/>}/>
     <Route path="/tender-awards/:id" element={<TenderAwardDetailPage/>}/><Route path="/work-orders/:id" element={<WorkOrderDetailPage/>}/>
@@ -81,5 +83,5 @@ function PortalLayout() {
 }
 
 export default function App() {
-  return <Routes><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<RegisterPage/>}/><Route path="/registration-pending" element={<RegistrationPendingPage/>}/><Route element={<ProtectedRoute/>}><Route path="/assignment-pending" element={<AssignmentPendingPage/>}/><Route path="/*" element={<PortalLayout/>}/></Route></Routes>;
+  return <Routes><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<RegisterPage/>}/><Route path="/registration-pending" element={<RegistrationPendingPage/>}/><Route element={<ProtectedRoute/>}><Route path="/assignment-pending" element={<AssignmentPendingPage/>}/><Route path="/*" element={<ScopePhaseProvider><PortalLayout/></ScopePhaseProvider>}/></Route></Routes>;
 }

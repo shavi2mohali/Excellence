@@ -1,3 +1,5 @@
+import { getScopeDietPhase } from "../services/scopePhaseService";
+import { requiresPrePabWorkflow } from "../constants/projectPhases";
 import { useEffect, useState } from "react";
 import { acceptArchitecturalDrawings, approveArchitecturalDrawings, releaseScopeToAgency, requestArchitectureScopeRevision, requestDrawingRevision, startArchitectureReview, startScertDrawingReview, submitDrawingsToScert, returnScertDrawingRevision } from "../services/scopeOfWorkService";
 import { getDrawingPackages, issueDrawingRevision } from "../services/drawingPackageService";
@@ -5,7 +7,13 @@ import { getCommunications, sendCommunication } from "../services/communicationS
 import { getAttachments, uploadPdfAttachment } from "../services/documentService";
 import type { AppUser, DocumentAttachment, DrawingPackage, OfficialCommunication, ScopeOfWork, SystemRole } from "../types";
 
-export function ScopeArchitectureWorkflow({scope,profile,onChanged}:{scope:ScopeOfWork;profile:AppUser|null;onChanged:()=>Promise<void>}){
+export function ScopeArchitectureWorkflow(props: {scope:ScopeOfWork;profile:AppUser|null;onChanged:()=>Promise<void>}) {
+ const [enabledDiet, setEnabledDiet] = useState("");
+ useEffect(() => { let cancelled=false;setEnabledDiet("");getScopeDietPhase(props.scope.dietId).then(sequence=>{if(!cancelled&&requiresPrePabWorkflow(sequence))setEnabledDiet(props.scope.dietId);}).catch(()=>{});return()=>{cancelled=true;}; }, [props.scope.dietId]);
+ return enabledDiet===props.scope.dietId ? <EnabledScopeArchitectureWorkflow {...props}/> : null;
+}
+
+function EnabledScopeArchitectureWorkflow({scope,profile,onChanged}:{scope:ScopeOfWork;profile:AppUser|null;onChanged:()=>Promise<void>}){
  const role=profile?.systemRole||profile?.role,[drawings,setDrawings]=useState<DrawingPackage[]>([]),[communications,setCommunications]=useState<OfficialCommunication[]>([]),[attachments,setAttachments]=useState<DocumentAttachment[]>([]),[comment,setComment]=useState(""),[subject,setSubject]=useState(""),[drawingNumber,setDrawingNumber]=useState(""),[drawingTitle,setDrawingTitle]=useState(""),[files,setFiles]=useState<File[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function load(){const[d,c,a]=await Promise.all([getDrawingPackages(scope.id),getCommunications("scope_of_work",scope.id),getAttachments("scope_of_work",scope.id)]);setDrawings(d);setCommunications(c.sort((x,y)=>String(x.createdAt).localeCompare(String(y.createdAt))));setAttachments(a);}
  useEffect(()=>{void load().catch(e=>setError(e instanceof Error?e.message:"Unable to load drawing workflow."));},[scope.id,scope.status]);
