@@ -1,0 +1,337 @@
+EXCELLENCE PROJECT STRUCTURE REPORT
+Generated from the current repository workspace on 2026-09-02.
+
+Excellence/
+|
++-- .env.admin [local administrative environment file - contents omitted]
++-- .env.example
++-- .env.local [local frontend environment file - contents omitted]
++-- .gitignore
++-- excellencedatabase-e0eb0a14150c.json [service-account credential file - contents omitted]
++-- firebase.json
++-- firestore.rules
++-- functions/
+|   +-- .env [Firebase Functions runtime environment file - contents omitted]
+|   +-- .env.example
+|   +-- package-lock.json
+|   +-- package.json
+|   +-- tsconfig.json
+|   +-- src/
+|       +-- index.ts
++-- public/
+|   +-- [currently empty]
++-- scripts/
+|   +-- createDemoScertAdmin.ts
+|   +-- importDietActivityFinancials.ts
+|   +-- migrateAssignmentDefaults.ts
+|   +-- seedDiets.ts
+|   +-- seedMasterData.js
+|   +-- seedMasterData.ts
++-- src/
+|   +-- App.tsx
+|   +-- main.tsx
+|   +-- styles.css
+|   +-- types.js
+|   +-- types.ts
+|   +-- components/
+|   |   +-- AppLayout.tsx
+|   |   +-- DietActivityFinancialSummary.tsx
+|   |   +-- PageHeader.tsx
+|   |   +-- ProtectedRoute.tsx
+|   |   +-- RetenderAction.tsx
+|   |   +-- ScopeArchitectureWorkflow.tsx
+|   |   +-- StatCard.tsx
+|   |   +-- TenderCorrigendaSection.tsx
+|   |   +-- auth/
+|   |       +-- AdminRoute.tsx
+|   +-- constants/
+|   |   +-- architectureZones.ts
+|   |   +-- contractors.ts
+|   |   +-- organisationRoles.ts
+|   |   +-- projectExecution.ts
+|   |   +-- projectPhases.ts
+|   |   +-- punjabDistricts.ts
+|   |   +-- tenders.ts
+|   +-- contexts/
+|   |   +-- AuthContext.tsx
+|   +-- data/
+|   |   +-- agencies.ts
+|   |   +-- masterData.js
+|   |   +-- masterData.ts
+|   +-- lib/
+|   |   +-- firebase.ts
+|   |   +-- firestore.ts
+|   +-- pages/
+|   |   +-- ActivityFinancialsPage.tsx
+|   |   +-- ActivityMasterPage.tsx
+|   |   +-- AdminSettingsPage.tsx
+|   |   +-- AgencyDetailPage.tsx
+|   |   +-- AssignmentPendingPage.tsx
+|   |   +-- AwardRecommendationPage.tsx
+|   |   +-- CivilAgenciesPage.tsx
+|   |   +-- ContractorDetailPage.tsx
+|   |   +-- ContractorFormPage.tsx
+|   |   +-- ContractorsPage.tsx
+|   |   +-- DashboardPage.tsx
+|   |   +-- DietDetailPage.tsx
+|   |   +-- DietListPage.tsx
+|   |   +-- FinancialEvaluationPage.tsx
+|   |   +-- FinancialTransactionsPage.tsx
+|   |   +-- LoginPage.tsx
+|   |   +-- RegisterPage.tsx
+|   |   +-- RegistrationPendingPage.tsx
+|   |   +-- RegistrationRequestsPage.tsx
+|   |   +-- ScopesPage.tsx
+|   |   +-- TenderAwardDetailPage.tsx
+|   |   +-- TenderBidsPage.tsx
+|   |   +-- TenderDetailPage.tsx
+|   |   +-- TenderFormPage.tsx
+|   |   +-- TendersPage.tsx
+|   |   +-- UserAssignmentsPage.tsx
+|   |   +-- WorkOrderDetailPage.tsx
+|   |   +-- WorkPackageDetailPage.tsx
+|   |   +-- WorkPackagesPage.tsx
+|   +-- services/
+|   |   +-- accessScopeService.ts
+|   |   +-- agencyService.ts
+|   |   +-- approvalService.ts
+|   |   +-- communicationService.ts
+|   |   +-- contractorService.ts
+|   |   +-- databaseResetService.ts
+|   |   +-- dietActivityFinancialService.ts
+|   |   +-- dietAgencyAssignmentService.ts
+|   |   +-- documentService.ts
+|   |   +-- drawingPackageService.ts
+|   |   +-- financialEvaluationService.ts
+|   |   +-- financialTransactionService.ts
+|   |   +-- registrationService.ts
+|   |   +-- scopeOfWorkService.ts
+|   |   +-- tenderAwardService.ts
+|   |   +-- tenderBidService.ts
+|   |   +-- tenderCorrigendumService.ts
+|   |   +-- tenderService.ts
+|   |   +-- userAssignmentService.ts
+|   |   +-- workOrderService.ts
+|   |   +-- workPackageService.ts
+|   +-- utils/
+|       +-- contractorIdentifiers.ts
+|       +-- currency.ts
+|       +-- financialEvaluation.ts
+|       +-- fundingCalculations.ts
+|       +-- tenderAward.ts
+|       +-- tenderPermissions.ts
++-- index.html
++-- package-lock.json
++-- package.json
++-- README.md
++-- storage.rules
++-- tsconfig.app.json
++-- tsconfig.json
++-- tsconfig.node.json
++-- vite.config.ts
++-- wrangler.jsonc
+
+Excluded from this report: node_modules/, functions/node_modules/, dist/, functions/lib/,
+.git/, .wrangler/, TypeScript build-info files, build caches, log files, temporary files,
+inspection data, and generated presentation build folders/artifacts.
+
+==================================================
+IMPORTANT FILES AND PURPOSE
+==================================================
+
+src/main.tsx
+Browser entry point that mounts React, BrowserRouter, and the authentication provider.
+
+src/App.tsx
+Main React application shell, navigation, role-aware menus, and route definitions.
+
+src/contexts/AuthContext.tsx
+Firebase Authentication session and application-user profile context.
+
+src/components/ProtectedRoute.tsx
+Guards application routes that require an authenticated, approved user.
+
+src/components/auth/AdminRoute.tsx
+Restricts administrative routes to the SCERT administrator role.
+
+src/types.ts
+Shared TypeScript domain models for users, assignments, scopes, tenders, finances, and related records.
+
+src/lib/firebase.ts
+Initializes and exports the Firebase client application, Authentication, and Firestore services.
+
+src/lib/firestore.ts
+Shared Firestore access helpers.
+
+src/services/databaseResetService.ts
+Frontend client for the protected Firebase database-reset preview and execution endpoint.
+
+src/services/accessScopeService.ts
+Builds role- and assignment-based data-access scopes.
+
+src/services/registrationService.ts
+Creates and manages pending public registration data.
+
+src/services/approvalService.ts
+Implements SCERT registration approval and rejection operations.
+
+src/services/userAssignmentService.ts
+Manages approved-user assignments, reassignment history, and deactivation.
+
+src/services/dietAgencyAssignmentService.ts
+Manages DIET-to-executing-agency assignments.
+
+src/services/scopeOfWorkService.ts
+Manages Scope of Work records and their workflow state.
+
+src/services/drawingPackageService.ts
+Manages Architecture drawing packages and approval workflow data.
+
+src/services/workPackageService.ts
+Manages Work Packages and their review/tender eligibility lifecycle.
+
+src/services/tenderService.ts
+Manages Tender/NIT records.
+
+src/services/tenderBidService.ts
+Manages bidder participation and technical bid information.
+
+src/services/financialEvaluationService.ts
+Manages financial bid evaluation and comparative-statement data.
+
+src/services/tenderAwardService.ts
+Manages tender-award records and recommendations.
+
+src/services/workOrderService.ts
+Manages work orders created after tender award.
+
+src/services/dietActivityFinancialService.ts
+Manages DIET activity-level financial approvals and allocations.
+
+src/services/financialTransactionService.ts
+Manages financial transaction records.
+
+src/services/documentService.ts
+Handles application document metadata and Firebase Storage uploads/downloads.
+
+src/pages/AdminSettingsPage.tsx
+SCERT administrative settings page, including database-reset controls.
+
+src/pages/DashboardPage.tsx
+Role-aware dashboard and project overview.
+
+src/pages/RegisterPage.tsx
+Public user-registration workflow.
+
+src/pages/RegistrationRequestsPage.tsx
+SCERT review interface for pending user registrations.
+
+src/pages/UserAssignmentsPage.tsx
+SCERT interface for assigning approved users to DIETs or agencies.
+
+src/pages/ScopesPage.tsx
+Scope of Work listing and Architecture/DIET/SCERT workflow interface.
+
+src/pages/WorkPackagesPage.tsx
+Work Package listing and creation interface.
+
+src/pages/TendersPage.tsx
+Tender/NIT listing and procurement workflow entry point.
+
+src/pages/ActivityFinancialsPage.tsx
+SCERT activity-wise financial approval interface.
+
+functions/src/index.ts
+Firebase Functions v2 backend containing the protected administrative database-reset function.
+
+functions/.env
+Ignored server runtime configuration file; contents intentionally omitted.
+
+functions/.env.example
+Safe example of the Firebase Functions runtime variable names and production origin format.
+
+firestore.rules
+Cloud Firestore authorization and data-access rules.
+
+storage.rules
+Firebase Storage authorization rules.
+
+firebase.json
+Firebase Functions and Firestore deployment configuration.
+
+wrangler.jsonc
+Cloudflare Workers static-assets configuration with React SPA fallback handling.
+
+vite.config.ts
+Vite build configuration with the React plugin.
+
+package.json
+Frontend dependencies and development, build, seed, migration, and import scripts.
+
+functions/package.json
+Firebase Functions dependencies, Node runtime, build command, and deployment command.
+
+tsconfig.json
+Root TypeScript project-reference configuration.
+
+tsconfig.app.json
+TypeScript compiler configuration for the React application.
+
+tsconfig.node.json
+TypeScript compiler configuration for Node-based Vite configuration code.
+
+scripts/seedMasterData.ts
+Administrative script for seeding project master data.
+
+scripts/seedDiets.ts
+Administrative script for seeding DIET master records.
+
+scripts/importDietActivityFinancials.ts
+Administrative import script for DIET activity financial data.
+
+README.md
+Project overview, setup instructions, architecture notes, workflows, and deployment guidance.
+
+.env.example
+Frontend environment-variable template without live credentials.
+
+.env.local
+Ignored local frontend environment file; contents intentionally omitted.
+
+.env.admin
+Ignored local administrative environment file; contents intentionally omitted.
+
+excellencedatabase-e0eb0a14150c.json
+Local service-account credential filename shown for awareness; contents intentionally omitted and not tracked.
+
+==================================================
+PROJECT SUMMARY
+==================================================
+
+Frontend: React 18 single-page application with role-aware pages and components.
+Backend: Firebase Functions v2 HTTPS backend for protected administrative operations.
+Authentication: Firebase Authentication with application profiles and role checks stored in Firestore.
+Database: Google Cloud Firestore.
+Document Storage: Firebase Cloud Storage, with repository security rules and a document service.
+Hosting: Cloudflare Workers static assets / Cloudflare Pages production deployment with SPA fallback.
+Build Tool: Vite 6 with the React plugin; TypeScript project builds run before Vite.
+Language: TypeScript and TSX primarily, with a small number of JavaScript support/data files and CSS.
+Routing: React Router DOM using BrowserRouter and protected/admin route wrappers.
+
+==================================================
+FILE COUNTS
+==================================================
+
+Total relevant files: 112
+TypeScript files: 46
+TSX files: 41
+JavaScript files: 3
+JSON/config files: 19
+CSS files: 1
+Other relevant files: 2
+
+Counting notes:
+- Sensitive environment and credential files are counted by filename only.
+- TypeScript files and TSX files are reported as separate categories.
+- JSON/config includes JSON, JSONC, environment filenames, ignore files, and Firebase rule files.
+- The empty public/ directory is displayed in the tree but is not counted as a file.
